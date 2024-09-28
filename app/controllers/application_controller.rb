@@ -10,7 +10,7 @@ class ApplicationController < ActionController::Base
   include Hijack
   include ReadOnlyHeader
 
-  attr_reader :theme_ids
+  attr_reader :theme_id
 
   serialization_scope :guardian
 
@@ -56,12 +56,17 @@ class ApplicationController < ActionController::Base
     SiteSetting.enable_escaped_fragments? && params.key?("_escaped_fragment_")
   end
 
+  def show_browser_update?
+    @show_browser_update ||= CrawlerDetection.show_browser_update?(request.user_agent)
+  end
+  helper_method :show_browser_update?
+
   def use_crawler_layout?
     @use_crawler_layout ||=
       request.user_agent &&
       (request.content_type.blank? || request.content_type.include?('html')) &&
       !['json', 'rss'].include?(params[:format]) &&
-      (has_escaped_fragment? || params.key?("print") ||
+      (has_escaped_fragment? || params.key?("print") || show_browser_update? ||
       CrawlerDetection.crawler?(request.user_agent, request.headers["HTTP_VIA"])
       )
   end
@@ -89,22 +94,44 @@ class ApplicationController < ActionController::Base
     end
   end
 
+  def ember_cli_required?
+    Rails.env.development? && ENV['NO_EMBER_CLI'] != '1' && request.headers['X-Discourse-Ember-CLI'] != 'true'
+  end
+
+  def application_layout
+    ember_cli_required? ? "ember_cli" : "application"
+  end
+
   def set_layout
     case request.headers["Discourse-Render"]
     when "desktop"
-      return "application"
+      return application_layout
     when "crawler"
       return "crawler"
     end
 
-    use_crawler_layout? ? 'crawler' : 'application'
+    use_crawler_layout? ? 'crawler' : application_layout
   end
 
   class RenderEmpty < StandardError; end
   class PluginDisabled < StandardError; end
+  class EmberCLIHijacked < StandardError; end
+
+  def catch_ember_cli_hijack
+    yield
+  rescue ActionView::Template::Error => ex
+    raise ex unless ex.cause.is_a?(EmberCLIHijacked)
+    send_ember_cli_bootstrap
+  end
 
   rescue_from RenderEmpty do
-    with_resolved_locale { render 'default/empty' }
+    catch_ember_cli_hijack do
+      with_resolved_locale { render 'default/empty' }
+    end
+  end
+
+  rescue_from EmberCLIHijacked do
+    send_ember_cli_bootstrap
   end
 
   rescue_from ArgumentError do |e|
@@ -123,6 +150,10 @@ class ApplicationController < ActionController::Base
 
   rescue_from ActionController::ParameterMissing do |e|
     render_json_error e.message, status: 400
+  end
+
+  rescue_from Discourse::SiteSettingMissing do |e|
+    render_json_error I18n.t('site_setting_missing', name: e.message), status: 500
   end
 
   rescue_from ActionController::RoutingError, PluginDisabled  do
@@ -161,7 +192,7 @@ class ApplicationController < ActionController::Base
         type: :rate_limit,
         status: 429,
         extras: { wait_seconds: retry_time_in_seconds },
-        headers: { 'Retry-After': retry_time_in_seconds }
+        headers: { 'Retry-After': retry_time_in_seconds.to_s }
       )
     end
   end
@@ -268,7 +299,7 @@ class ApplicationController < ActionController::Base
       with_resolved_locale(check_current_user: false) do
         # Include error in HTML format for topics#show.
         if (request.params[:controller] == 'topics' && request.params[:action] == 'show') || (request.params[:controller] == 'categories' && request.params[:action] == 'find_by_slug')
-          opts[:extras] = { html: build_not_found_page(error_page_opts) }
+          opts[:extras] = { html: build_not_found_page(error_page_opts), group: error_page_opts[:group] }
         end
       end
 
@@ -281,15 +312,23 @@ class ApplicationController < ActionController::Base
       rescue Discourse::InvalidAccess
         return render plain: message, status: status_code
       end
-      with_resolved_locale do
-        error_page_opts[:layout] = opts[:include_ember] ? 'application' : 'no_ember'
-        render html: build_not_found_page(error_page_opts)
+      catch_ember_cli_hijack do
+        with_resolved_locale do
+          error_page_opts[:layout] = opts[:include_ember] ? 'application' : 'no_ember'
+          render html: build_not_found_page(error_page_opts)
+        end
       end
     end
   end
 
+  def send_ember_cli_bootstrap
+    response.headers['X-Discourse-Bootstrap-Required'] = true
+    response.headers['Content-Type'] = "application/json"
+    render json: { preloaded: @preloaded }
+  end
+
   # If a controller requires a plugin, it will raise an exception if that plugin is
-  # disabled. This allows plugins to be disabled programatically.
+  # disabled. This allows plugins to be disabled programmatically.
   def self.requires_plugin(plugin_name)
     before_action do
       raise PluginDisabled.new if Discourse.disabled_plugin_names.include?(plugin_name)
@@ -362,7 +401,7 @@ class ApplicationController < ActionController::Base
     @preloaded ||= {}
     # I dislike that there is a gsub as opposed to a gsub!
     #  but we can not be mucking with user input, I wonder if there is a way
-    #  to inject this safty deeper in the library or even in AM serializer
+    #  to inject this safety deeper in the library or even in AM serializer
     @preloaded[key] = json.gsub("</", "<\\/")
   end
 
@@ -409,35 +448,34 @@ class ApplicationController < ActionController::Base
     resolve_safe_mode
     return if request.env[NO_CUSTOM]
 
-    theme_ids = []
+    theme_id = nil
 
-    if preview_theme_id = request[:preview_theme_id]&.to_i
-      ids = [preview_theme_id]
-      theme_ids = ids if guardian.allow_themes?(ids, include_preview: true)
+    if (preview_theme_id = request[:preview_theme_id]&.to_i) &&
+      guardian.allow_themes?([preview_theme_id], include_preview: true)
+
+      theme_id = preview_theme_id
     end
 
     user_option = current_user&.user_option
 
-    if theme_ids.blank?
+    if theme_id.blank?
       ids, seq = cookies[:theme_ids]&.split("|")
-      ids = ids&.split(",")&.map(&:to_i)
-      if ids.present? && seq && seq.to_i == user_option&.theme_key_seq.to_i
-        theme_ids = ids if guardian.allow_themes?(ids)
+      id = ids&.split(",")&.map(&:to_i)&.first
+      if id.present? && seq && seq.to_i == user_option&.theme_key_seq.to_i
+        theme_id = id if guardian.allow_themes?([id])
       end
     end
 
-    if theme_ids.blank?
+    if theme_id.blank?
       ids = user_option&.theme_ids || []
-      theme_ids = ids if guardian.allow_themes?(ids)
+      theme_id = ids.first if guardian.allow_themes?(ids)
     end
 
-    if theme_ids.blank? && SiteSetting.default_theme_id != -1
-      if guardian.allow_themes?([SiteSetting.default_theme_id])
-        theme_ids << SiteSetting.default_theme_id
-      end
+    if theme_id.blank? && SiteSetting.default_theme_id != -1 && guardian.allow_themes?([SiteSetting.default_theme_id])
+      theme_id = SiteSetting.default_theme_id
     end
 
-    @theme_ids = request.env[:resolved_theme_ids] = theme_ids
+    @theme_id = request.env[:resolved_theme_id] = theme_id
   end
 
   def guardian
@@ -565,12 +603,15 @@ class ApplicationController < ActionController::Base
     store_preloaded("banner", banner_json)
     store_preloaded("customEmoji", custom_emoji)
     store_preloaded("isReadOnly", @readonly_mode.to_s)
+    store_preloaded("activatedThemes", activated_themes_json)
   end
 
   def preload_current_user_data
     store_preloaded("currentUser", MultiJson.dump(CurrentUserSerializer.new(current_user, scope: guardian, root: false)))
     report = TopicTrackingState.report(current_user)
-    serializer = ActiveModel::ArraySerializer.new(report, each_serializer: TopicTrackingStateSerializer)
+    serializer = ActiveModel::ArraySerializer.new(
+      report, each_serializer: TopicTrackingStateSerializer, scope: guardian
+    )
     store_preloaded("topicTrackingStates", MultiJson.dump(serializer))
   end
 
@@ -578,10 +619,10 @@ class ApplicationController < ActionController::Base
     target = view_context.mobile_view? ? :mobile : :desktop
 
     data =
-      if @theme_ids.present?
+      if @theme_id.present?
         {
-         top: Theme.lookup_field(@theme_ids, target, "after_header"),
-         footer: Theme.lookup_field(@theme_ids, target, "footer")
+         top: Theme.lookup_field(@theme_id, target, "after_header"),
+         footer: Theme.lookup_field(@theme_id, target, "footer")
         }
       else
         {}
@@ -885,4 +926,10 @@ class ApplicationController < ActionController::Base
     end
   end
 
+  def activated_themes_json
+    id = @theme_id
+    return "{}" if id.blank?
+    ids = Theme.transform_ids(id)
+    Theme.where(id: ids).pluck(:id, :name).to_h.to_json
+  end
 end

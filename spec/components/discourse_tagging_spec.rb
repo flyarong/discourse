@@ -162,14 +162,53 @@ describe DiscourseTagging do
           expect(sorted_tag_names(tags)).to contain_exactly(tag2.name)
         end
 
-        it "let's staff ignore the requirement" do
+        it "lets staff ignore the requirement" do
+          tags = DiscourseTagging.filter_allowed_tags(Guardian.new(admin),
+            for_input: true,
+            category: category,
+            limit: 5
+          ).to_a
+
+          expect(sorted_tag_names(tags)).to eq(sorted_tag_names([tag1, tag2, tag3]))
+        end
+
+      end
+
+      context 'with many required tags in a tag group' do
+        fab!(:tag4) { Fabricate(:tag, name: "T4") }
+        fab!(:tag5) { Fabricate(:tag, name: "T5") }
+        fab!(:tag6) { Fabricate(:tag, name: "T6") }
+        fab!(:tag7) { Fabricate(:tag, name: "T7") }
+        fab!(:tag_group) { Fabricate(:tag_group, tags: [tag1, tag2, tag4, tag5, tag6, tag7]) }
+        fab!(:category) { Fabricate(:category, required_tag_group: tag_group, min_tags_from_required_group: 1) }
+
+        it "returns required tags for staff by default" do
+          tags = DiscourseTagging.filter_allowed_tags(Guardian.new(admin),
+            for_input: true,
+            category: category
+          ).to_a
+          expect(sorted_tag_names(tags)).to eq(sorted_tag_names([tag1, tag2, tag4, tag5, tag6, tag7]))
+        end
+
+        it "ignores required tags for staff when searching using a term" do
           tags = DiscourseTagging.filter_allowed_tags(Guardian.new(admin),
             for_input: true,
             category: category,
             term: 'fun'
           ).to_a
+
           expect(sorted_tag_names(tags)).to eq(sorted_tag_names([tag1, tag2, tag3]))
         end
+
+        it "returns required tags for nonstaff and overrides limit" do
+          tags = DiscourseTagging.filter_allowed_tags(Guardian.new(user),
+            for_input: true,
+            limit: 5,
+            category: category
+          ).to_a
+          expect(sorted_tag_names(tags)).to eq(sorted_tag_names([tag1, tag2, tag4, tag5, tag6, tag7]))
+        end
+
       end
 
       context 'empty term' do
@@ -265,10 +304,28 @@ describe DiscourseTagging do
         expect(topic.errors[:base]&.first).to eq(I18n.t("tags.restricted_tag_disallowed", tag: 'alpha'))
       end
 
+      it "does not send a discourse event for regular users who can't add staff-only tags" do
+        events = DiscourseEvent.track_events do
+          DiscourseTagging.tag_topic_by_names(topic, Guardian.new(user), ['alpha'])
+        end
+        expect(events.count).to eq(0)
+      end
+
       it 'staff can add staff-only tags' do
         valid = DiscourseTagging.tag_topic_by_names(topic, Guardian.new(admin), ['alpha'])
         expect(valid).to eq(true)
         expect(topic.errors[:base]).to be_empty
+      end
+
+      it 'sends a discourse event when the staff adds a staff-only tag' do
+        old_tag_names = topic.tags.pluck(:name)
+        tag_changed_event = DiscourseEvent.track_events do
+          DiscourseTagging.tag_topic_by_names(topic, Guardian.new(admin), ['alpha'])
+        end.last
+        expect(tag_changed_event[:event_name]).to eq(:topic_tags_changed)
+        expect(tag_changed_event[:params].first).to eq(topic)
+        expect(tag_changed_event[:params].second[:old_tag_names]).to eq(old_tag_names)
+        expect(tag_changed_event[:params].second[:new_tag_names]).to eq(['alpha'])
       end
 
       context 'non-staff users in tag group groups' do
@@ -441,7 +498,7 @@ describe DiscourseTagging do
         valid = DiscourseTagging.tag_topic_by_names(topic, Guardian.new(user), [])
         expect(valid).to eq(false)
         expect(topic.errors[:base]&.first).to eq(
-          I18n.t("tags.required_tags_from_group", count: 1, tag_group_name: tag_group.name)
+          I18n.t("tags.required_tags_from_group", count: 1, tag_group_name: tag_group.name, tags: tag_group.tags.pluck(:name).join(", "))
         )
       end
 
@@ -449,7 +506,7 @@ describe DiscourseTagging do
         valid = DiscourseTagging.tag_topic_by_names(topic, Guardian.new(user), [tag3.name])
         expect(valid).to eq(false)
         expect(topic.errors[:base]&.first).to eq(
-          I18n.t("tags.required_tags_from_group", count: 1, tag_group_name: tag_group.name)
+          I18n.t("tags.required_tags_from_group", count: 1, tag_group_name: tag_group.name, tags: tag_group.tags.pluck(:name).join(", "))
         )
       end
 

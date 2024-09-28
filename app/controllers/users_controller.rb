@@ -34,6 +34,7 @@ class UsersController < ApplicationController
   #  once that happens you can't log in with social
   skip_before_action :verify_authenticity_token, only: [:create]
   skip_before_action :redirect_to_login_if_required, only: [:check_username,
+                                                            :check_email,
                                                             :create,
                                                             :account_created,
                                                             :activate_account,
@@ -111,6 +112,7 @@ class UsersController < ApplicationController
                                               :user_profile,
                                               :card_background_upload,
                                               :primary_group,
+                                              :flair_group,
                                               :primary_email
                                             )
 
@@ -284,11 +286,10 @@ class UsersController < ApplicationController
     guardian.ensure_can_edit!(user)
 
     ActiveRecord::Base.transaction do
-      if email = user.user_emails.find_by(email: params[:email], primary: false)
-        email.destroy
-        DiscourseEvent.trigger(:user_updated, user)
-      elsif change_requests = user.email_change_requests.where(new_email: params[:email]).presence
+      if change_requests = user.email_change_requests.where(new_email: params[:email]).presence
         change_requests.destroy_all
+      elsif user.user_emails.where(email: params[:email], primary: false).destroy_all.present?
+        DiscourseEvent.trigger(:user_updated, user)
       else
         return render json: failed_json, status: 428
       end
@@ -308,7 +309,9 @@ class UsersController < ApplicationController
     guardian.ensure_can_edit!(user)
 
     report = TopicTrackingState.report(user)
-    serializer = ActiveModel::ArraySerializer.new(report, each_serializer: TopicTrackingStateSerializer)
+    serializer = ActiveModel::ArraySerializer.new(
+      report, each_serializer: TopicTrackingStateSerializer, scope: guardian
+    )
 
     render json: MultiJson.dump(serializer)
   end
@@ -522,6 +525,42 @@ class UsersController < ApplicationController
     render json: checker.check_username(username, email)
   end
 
+  def check_email
+    begin
+      RateLimiter.new(nil, "check-email-#{request.remote_ip}", 10, 1.minute).performed!
+    rescue RateLimiter::LimitExceeded
+      return render json: success_json
+    end
+
+    email = Email.downcase((params[:email] || "").strip)
+
+    if email.blank? || SiteSetting.hide_email_address_taken?
+      return render json: success_json
+    end
+
+    if !(email =~ EmailValidator.email_regex)
+      error = User.new.errors.full_message(:email, I18n.t(:'user.email.invalid'))
+      return render json: failed_json.merge(errors: [error])
+    end
+
+    if !EmailValidator.allowed?(email)
+      error = User.new.errors.full_message(:email, I18n.t(:'user.email.not_allowed'))
+      return render json: failed_json.merge(errors: [error])
+    end
+
+    if ScreenedEmail.should_block?(email)
+      error = User.new.errors.full_message(:email, I18n.t(:'user.email.blocked'))
+      return render json: failed_json.merge(errors: [error])
+    end
+
+    if User.where(staged: false).find_by_email(email).present?
+      error = User.new.errors.full_message(:email, I18n.t(:'errors.messages.taken'))
+      return render json: failed_json.merge(errors: [error])
+    end
+
+    render json: success_json
+  end
+
   def user_from_params_or_current_user
     params[:for_user_id] ? User.find(params[:for_user_id]) : current_user
   end
@@ -673,6 +712,7 @@ class UsersController < ApplicationController
   def password_reset_show
     expires_now
     token = params[:token]
+
     password_reset_find_user(token, committing_change: false)
 
     if !@error
@@ -1038,6 +1078,7 @@ class UsersController < ApplicationController
      groups: @groups
     }
 
+    options[:include_staged_users] = !!ActiveModel::Type::Boolean.new.cast(params[:include_staged_users])
     options[:topic_id] = topic_id if topic_id
     options[:category_id] = category_id if category_id
 
@@ -1092,11 +1133,9 @@ class UsersController < ApplicationController
 
     if type.blank? || type == 'system'
       upload_id = nil
+    elsif !SiteSetting.allow_uploaded_avatars
+      return render json: failed_json, status: 422
     else
-      if !SiteSetting.allow_uploaded_avatars
-        return render json: failed_json, status: 422
-      end
-
       upload_id = params[:upload_id]
       upload = Upload.find_by(id: upload_id)
 
@@ -1114,6 +1153,10 @@ class UsersController < ApplicationController
       else
         user.user_avatar.custom_upload_id = upload_id
       end
+    end
+
+    if user.is_system_user?
+      SiteSetting.use_site_small_logo_as_system_avatar = false
     end
 
     user.uploaded_avatar_id = upload_id
@@ -1150,6 +1193,11 @@ class UsersController < ApplicationController
     end
 
     user.uploaded_avatar_id = upload.id
+
+    if user.is_system_user?
+      SiteSetting.use_site_small_logo_as_system_avatar = false
+    end
+
     user.save!
 
     avatar = user.user_avatar || user.create_user_avatar
@@ -1585,6 +1633,7 @@ class UsersController < ApplicationController
       :profile_background_upload_url,
       :card_background_upload_url,
       :primary_group_id,
+      :flair_group_id,
       :featured_topic_id
     ]
 

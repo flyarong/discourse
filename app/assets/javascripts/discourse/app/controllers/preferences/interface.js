@@ -1,4 +1,5 @@
-import Controller, { inject } from "@ember/controller";
+import Controller, { inject as controller } from "@ember/controller";
+import Session from "discourse/models/session";
 import {
   iOSWithVisualViewport,
   isiPad,
@@ -34,7 +35,7 @@ export default Controller.extend({
   currentThemeId: -1,
   previewingColorScheme: false,
   selectedDarkColorSchemeId: null,
-  preferencesController: inject("preferences"),
+  preferencesController: controller("preferences"),
   makeColorSchemeDefault: true,
 
   init() {
@@ -237,9 +238,7 @@ export default Controller.extend({
       return value;
     },
     get() {
-      return this.currentSchemeCanBeSelected
-        ? this.session.userColorSchemeId
-        : null;
+      return this.session.userColorSchemeId;
     },
   }),
 
@@ -394,8 +393,10 @@ export default Controller.extend({
           this.themeId,
           true
         );
+        Session.currentProp("darkModeAvailable", false);
       } else {
         loadColorSchemeStylesheet(colorSchemeId, this.themeId, true);
+        Session.currentProp("darkModeAvailable", true);
       }
     },
 

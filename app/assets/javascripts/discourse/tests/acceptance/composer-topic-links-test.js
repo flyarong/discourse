@@ -52,6 +52,17 @@ acceptance("Composer topic featured links", function (needs) {
     );
   });
 
+  test("YouTube onebox with title", async function (assert) {
+    await visit("/");
+    await click("#create-topic");
+    await fillIn("#reply-title", "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    assert.equal(
+      queryAll(".title-input input").val(),
+      "Rick Astley - Never Gonna Give You Up (Video)",
+      "title is from the oneboxed article"
+    );
+  });
+
   test("no onebox result", async function (assert) {
     await visit("/");
     await click("#create-topic");
@@ -170,7 +181,7 @@ acceptance(
       await visit("/");
       await click("#create-topic");
       assert.ok(
-        queryAll(".d-editor-textarea-wrapper.disabled").length,
+        exists(".d-editor-textarea-wrapper.disabled"),
         "textarea is disabled"
       );
       await fillIn("#reply-title", "http://www.example.com/has-title.html");
@@ -188,7 +199,7 @@ acceptance(
         "title is from the oneboxed article"
       );
       assert.ok(
-        queryAll(".d-editor-textarea-wrapper.disabled").length === 0,
+        !exists(".d-editor-textarea-wrapper.disabled"),
         "textarea is enabled"
       );
     });

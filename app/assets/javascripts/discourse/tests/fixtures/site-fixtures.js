@@ -4,7 +4,6 @@ export default {
   "site.json": {
     site: {
       default_archetype: "regular",
-      disabled_plugins: [],
       shared_drafts_category_id: 24,
       notification_types: NOTIFICATION_TYPES,
       post_types: {
@@ -12,6 +11,13 @@ export default {
         moderator_action: 2,
         small_action: 3,
         whisper: 4,
+      },
+      trust_levels: {
+        newuser: 0,
+        basic: 1,
+        member: 2,
+        regular: 3,
+        leader: 4,
       },
       groups: [
         { id: 0, name: "everyone" },
@@ -29,6 +35,7 @@ export default {
         "latest",
         "unread",
         "new",
+        "top",
         "starred",
         "read",
         "posted",
@@ -536,28 +543,6 @@ export default {
           is_custom_flag: true,
         },
       ],
-      trust_levels: [
-        {
-          id: 0,
-          name: "new user",
-        },
-        {
-          id: 1,
-          name: "basic user",
-        },
-        {
-          id: 2,
-          name: "member",
-        },
-        {
-          id: 3,
-          name: "regular",
-        },
-        {
-          id: 4,
-          name: "leader",
-        },
-      ],
       archetypes: [
         {
           id: "regular",
@@ -576,7 +561,6 @@ export default {
           custom_url: null,
           pretty_name_override: null,
           title_override: null,
-          message_override: null,
           frame_width: 580,
           frame_height: 400,
           can_connect: true,

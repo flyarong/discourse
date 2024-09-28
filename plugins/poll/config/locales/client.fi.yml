@@ -18,13 +18,13 @@ fi:
         title: "Äänet ovat <strong>julkisia</strong>."
       results:
         groups:
-          title: "Täytyy olla ryhmien %{groups} jäsen, jotta voi äänestää tässä äänestyksessä."
+          title: "Sinun täytyy olla ryhmien %{groups} jäsen, jotta voit äänestää tässä kyselyssä."
         vote:
-          title: "Näet äänet, kun <strong>olet äänestänyt</strong>."
+          title: "Tulokset näytetään <strong>kyselyn jälkeen</strong>."
         closed:
-          title: "Tulokset näytetään äänestyksen <strong>sulkeuduttua</strong>."
+          title: "Tulokset näytetään kyselyn <strong>sulkeuduttua</strong>."
         staff:
-          title: "Tulokset näytetään vain <strong>henkilökunnan</strong> jäsenille. "
+          title: "Tulokset näytetään vain <strong>henkilökunnan</strong> jäsenille."
       multiple:
         help:
           at_least_min_options:
@@ -41,8 +41,8 @@ fi:
         title: "Antakaa äänenne"
         label: "Äänestä nyt!"
       show-results:
-        title: "Näytä äänestystulos"
-        label: "Näytä tulos"
+        title: "Näytä kyselyn tulos"
+        label: "Näytä tulokset"
       hide-results:
         title: "Palaa äänestysvalintaasi"
         label: "Näytä äänestys"
@@ -50,62 +50,68 @@ fi:
         title: "Lajittele äänet käyttäjäkentän perusteella"
         label: "Näytä erittely"
       export-results:
-        title: "Vie äänestystulos"
+        title: "Vie kyselyn tulos"
         label: "Vie"
       open:
-        title: "Avaa äänestys"
+        title: "Avaa kysely"
         label: "Avaa"
-        confirm: "Avataanko äänestys?"
+        confirm: "Avataanko kysely?"
       close:
-        title: "Sulje äänestys"
+        title: "Sulje kysely"
         label: "Sulje"
-        confirm: "Suljetaanko äänestys?"
+        confirm: "Suljetaanko kysely?"
       automatic_close:
         closes_in: "Sulkeutuu <strong>%{timeLeft}</strong> kuluttua"
         age: "Sulkeutui <strong>%{age}</strong>"
       breakdown:
-        title: "Äänestystulokset"
+        title: "Kyselyn tulokset"
         votes: "%{count} ääntä"
         breakdown: "Erittely"
         percentage: "Prosenttiosuus"
-        count: "Määrä"
-      error_while_toggling_status: "Pahoittelut, äänestyksen tilaa muutettaessa tapahtui virhe."
-      error_while_casting_votes: "Pahoittelut, ääntä annettaessa tapahtui virhe."
-      error_while_fetching_voters: "Pahoittelut, äänestäneiden näyttämisessä tapahtui virhe."
-      error_while_exporting_results: "Pahoittelut, äänestystuloksen vienti epäonnistui."
+        count: "Lukumäärä"
+      error_while_toggling_status: "Kyselyn tilaa muutettaessa tapahtui virhe."
+      error_while_casting_votes: "Ääntä annettaessa tapahtui virhe."
+      error_while_fetching_voters: "Äänestäneiden näyttämisessä tapahtui virhe."
+      error_while_exporting_results: "Kyselyn tuloksen vienti epäonnistui."
       ui_builder:
-        title: Luo äänestys
-        insert: Lisää äänestys
+        title: Luo kysely
+        insert: Lisää kysely
         help:
-          options_count: Syötä ainakin 1 vaihtoehto
+          options_min_count: Syötä vähintään 1 vaihtoehto.
+          options_max_count: Syötä enintään %{count} vaihtoehtoa.
+          invalid_min_value: Vähimmäisarvon on oltava vähintään 1.
+          invalid_max_value: Enimmäisarvon on oltava vähintään 1, mutta pienempi tai yhtä suuri kuin vaihtoehtojen määrä.
           invalid_values: Vähimmäisarvon täytyy olla enimmäisarvoa pienempi.
           min_step_value: Askelvälin on oltava vähintään 1
         poll_type:
           label: Tyyppi
-          regular: Valitaan yksi
-          multiple: Valitaan useita
+          regular: Yksi valinta
+          multiple: Monivalinta
           number: Numeroarviointi
         poll_result:
-          label: Tulokset
-          always: Näkyvät aina
-          vote: Kun on äänestänyt
-          closed: Kun äänestys suljettu
-          staff: Vain henkilökunta
+          label: Näytä tulokset...
+          always: Aina näkyvissä
+          vote: Vasta äänestämisen jälkeen
+          closed: Kun kysely on suljettu
+          staff: Vain henkilökunnalle
         poll_groups:
-          label: Sallitut ryhmät
+          label: Rajoita äänestys näihin ryhmiin
         poll_chart_type:
-          label: Kuvaajan tyyppi
+          label: Tuloskaavio
           bar: Pylväs
           pie: Ympyrä
         poll_config:
-          max: Enint.
-          min: Väh.
+          max: Valintoja enintään
+          min: Valintoja vähintään
           step: Askelväli
         poll_public:
           label: Näytä äänestäneet
         poll_title:
-          label: Otsikko (ei-pakollinen)
+          label: Otsikko (valinnainen)
         poll_options:
-          label: Syötä yksi äänestysvaihtoehto riviä kohden
+          label: Valittavat vaihtoehdot (yksi per rivi)
+          add: Lisää vaihtoehto
         automatic_close:
-          label: Sulje äänestys ajastetusti
+          label: Sulje kysely automaattisesti
+        show_advanced: "Näytä lisäasetukset"
+        hide_advanced: "Piilota lisäasetukset"

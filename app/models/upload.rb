@@ -13,6 +13,7 @@ class Upload < ActiveRecord::Base
   SHA1_LENGTH = 40
   SEEDED_ID_THRESHOLD = 0
   URL_REGEX ||= /(\/original\/\dX[\/\.\w]*\/(\h+)[\.\w]*)/
+  MAX_IDENTIFY_SECONDS = 5
 
   belongs_to :user
   belongs_to :access_control_post, class_name: 'Post'
@@ -61,6 +62,40 @@ class Upload < ActiveRecord::Base
       verified: 2,
       invalid_etag: 3
     )
+  end
+
+  def self.with_no_non_post_relations
+    scope = self
+      .joins(<<~SQL)
+        LEFT JOIN site_settings ss
+        ON NULLIF(ss.value, '')::integer = uploads.id
+        AND ss.data_type = #{SiteSettings::TypeSupervisor.types[:upload].to_i}
+      SQL
+      .where("ss.value IS NULL")
+      .joins("LEFT JOIN users u ON u.uploaded_avatar_id = uploads.id")
+      .where("u.uploaded_avatar_id IS NULL")
+      .joins("LEFT JOIN user_avatars ua ON ua.gravatar_upload_id = uploads.id OR ua.custom_upload_id = uploads.id")
+      .where("ua.gravatar_upload_id IS NULL AND ua.custom_upload_id IS NULL")
+      .joins("LEFT JOIN user_profiles up ON up.profile_background_upload_id = uploads.id OR up.card_background_upload_id = uploads.id")
+      .where("up.profile_background_upload_id IS NULL AND up.card_background_upload_id IS NULL")
+      .joins("LEFT JOIN categories c ON c.uploaded_logo_id = uploads.id OR c.uploaded_background_id = uploads.id")
+      .where("c.uploaded_logo_id IS NULL AND c.uploaded_background_id IS NULL")
+      .joins("LEFT JOIN custom_emojis ce ON ce.upload_id = uploads.id")
+      .where("ce.upload_id IS NULL")
+      .joins("LEFT JOIN theme_fields tf ON tf.upload_id = uploads.id")
+      .where("tf.upload_id IS NULL")
+      .joins("LEFT JOIN user_exports ue ON ue.upload_id = uploads.id")
+      .where("ue.upload_id IS NULL")
+      .joins("LEFT JOIN groups g ON g.flair_upload_id = uploads.id")
+      .where("g.flair_upload_id IS NULL")
+      .joins("LEFT JOIN badges b ON b.image_upload_id = uploads.id")
+      .where("b.image_upload_id IS NULL")
+
+    if SiteSetting.selectable_avatars.present?
+      scope = scope.where.not(id: SiteSetting.selectable_avatars.map(&:id))
+    end
+
+    scope
   end
 
   def to_s
@@ -225,7 +260,7 @@ class Upload < ActiveRecord::Base
 
     begin
       if extension == 'svg'
-        w, h = Discourse::Utils.execute_command("identify", "-format", "%w %h", path).split(' ') rescue [0, 0]
+        w, h = Discourse::Utils.execute_command("identify", "-format", "%w %h", path, timeout: MAX_IDENTIFY_SECONDS).split(' ') rescue [0, 0]
       else
         w, h = FastImage.new(path, raise_on_failure: true).size
       end
@@ -274,7 +309,7 @@ class Upload < ActiveRecord::Base
   end
 
   def target_image_quality(local_path, test_quality)
-    @file_quality ||= Discourse::Utils.execute_command("identify", "-format", "%Q", local_path).to_i rescue 0
+    @file_quality ||= Discourse::Utils.execute_command("identify", "-format", "%Q", local_path, timeout: MAX_IDENTIFY_SECONDS).to_i rescue 0
 
     if @file_quality == 0 || @file_quality > test_quality
       test_quality
@@ -326,7 +361,13 @@ class Upload < ActiveRecord::Base
     secure_status_did_change = self.secure? != mark_secure
     self.update(secure_params(mark_secure, reason, source))
 
-    Discourse.store.update_upload_ACL(self) if Discourse.store.external?
+    if Discourse.store.external?
+      begin
+        Discourse.store.update_upload_ACL(self)
+      rescue Aws::S3::Errors::NotImplemented => err
+        Discourse.warn_exception(err, message: "The file store object storage provider does not support setting ACLs")
+      end
+    end
 
     secure_status_did_change
   end

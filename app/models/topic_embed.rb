@@ -165,7 +165,7 @@ class TopicEmbed < ActiveRecord::Base
             uri.host = original_uri.host
             node[url_param] = uri.to_s
           end
-        rescue URI::Error
+        rescue URI::Error, Addressable::URI::InvalidURIError
           # If there is a mistyped URL, just do nothing
         end
       end
@@ -240,7 +240,7 @@ class TopicEmbed < ActiveRecord::Base
     end
     return result unless result.blank?
 
-    # If there is no first paragaph, return the first div (onebox)
+    # If there is no first paragraph, return the first div (onebox)
     doc.css('div').first.to_s
   end
 

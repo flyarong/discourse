@@ -177,6 +177,29 @@ describe Oneboxer do
     expect(Oneboxer.external_onebox(url)[:onebox]).to be_present
   end
 
+  it "censors external oneboxes" do
+    Fabricate(:watched_word, action: WatchedWord.actions[:censor], word: "bad word")
+
+    url = 'https://example.com/'
+    stub_request(:any, url).to_return(status: 200, body: <<~HTML, headers: {})
+      <html>
+      <head>
+        <meta property="og:title" content="title with bad word">
+        <meta property="og:description" content="description with bad word">
+      </head>
+      <body>
+        <p>content with bad word</p>
+      </body>
+      <html>
+    HTML
+
+    onebox = Oneboxer.external_onebox(url)
+    expect(onebox[:onebox]).to include('title with')
+    expect(onebox[:onebox]).not_to include('bad word')
+    expect(onebox[:preview]).to include('title with')
+    expect(onebox[:preview]).not_to include('bad word')
+  end
+
   it "uses the Onebox custom user agent on specified hosts" do
     SiteSetting.force_custom_user_agent_hosts = "http://codepen.io|https://video.discourse.org/"
     url = 'https://video.discourse.org/presentation.mp4'
@@ -207,6 +230,7 @@ describe Oneboxer do
 
     before do
       stub_request(:any, "https://www.youtube.com/watch?v=dQw4w9WgXcQ").to_return(status: 200, body: html)
+      stub_request(:any, "https://www.youtube.com/embed/dQw4w9WgXcQ").to_return(status: 403, body: nil)
     end
 
     it "allows restricting engines based on the allowed_onebox_iframes setting" do
@@ -327,11 +351,118 @@ describe Oneboxer do
         <p>After Onebox</p>
       HTML
     end
+
+    it 'does keeps SVGs valid' do
+      raw = "Onebox\n\nhttps://example.com"
+      cooked = PrettyText.cook(raw)
+      cooked = Oneboxer.apply(Loofah.fragment(cooked)) { '<div><svg><path></path></svg></div>' }
+      doc = Nokogiri::HTML5::fragment(cooked.to_html)
+      expect(doc.to_html).to match_html <<~HTML
+        <p>Onebox</p>
+        <div><svg><path></path></svg></div>
+      HTML
+    end
   end
 
   describe '#force_get_hosts' do
+    before do
+      SiteSetting.cache_onebox_response_body_domains = "example.net|example.com|example.org"
+    end
+
     it "includes Amazon sites" do
       expect(Oneboxer.force_get_hosts).to include('https://www.amazon.ca')
+    end
+
+    it "includes cache_onebox_response_body_domains" do
+      expect(Oneboxer.force_get_hosts).to include('https://www.example.com')
+    end
+  end
+
+  context 'strategies' do
+    it "has a 'default' strategy" do
+      expect(Oneboxer.strategies.keys.first).to eq(:default)
+    end
+
+    it "has a strategy with overrides" do
+      strategy = Oneboxer.strategies.keys[1]
+      expect(Oneboxer.strategies[strategy].keys).not_to eq([])
+    end
+
+    context "using a non-default strategy" do
+      let(:hostname) { "my.interesting.site" }
+      let(:url) { "https://#{hostname}/cool/content" }
+      let(:html) do
+        <<~HTML
+          <html>
+          <head>
+            <meta property="og:title" content="Page Title">
+            <meta property="og:description" content="Here is some cool content">
+          </head>
+          <body>
+             <p>body</p>
+          </body>
+          <html>
+        HTML
+      end
+
+      before do
+        stub_request(:head, url).to_return(status: 509)
+        stub_request(:get, url).to_return(status: 200, body: html)
+      end
+
+      after do
+        Oneboxer.clear_preferred_strategy!(hostname)
+      end
+
+      it "uses multiple strategies" do
+        default_ordered = Oneboxer.strategies.keys
+        custom_ordered = Oneboxer.ordered_strategies(hostname)
+        expect(custom_ordered).to eq(default_ordered)
+
+        expect(Oneboxer.preferred_strategy(hostname)).to eq(nil)
+        expect(Oneboxer.preview(url, invalidate_oneboxes: true)).to include("Here is some cool content")
+
+        custom_ordered = Oneboxer.ordered_strategies(hostname)
+
+        expect(custom_ordered.count).to eq(default_ordered.count)
+        expect(custom_ordered).not_to eq(default_ordered)
+
+        expect(Oneboxer.preferred_strategy(hostname)).not_to eq(:default)
+      end
+    end
+  end
+
+  describe 'cache_onebox_response_body' do
+    let(:html) do
+      <<~HTML
+        <html>
+        <body>
+           <p>cache me if you can</p>
+        </body>
+        <html>
+      HTML
+    end
+
+    let(:url) { "https://www.example.com/my/great/content" }
+    let(:url2) { "https://www.example2.com/my/great/content" }
+
+    before do
+      stub_request(:any, url).to_return(status: 200, body: html)
+      stub_request(:any, url2).to_return(status: 200, body: html)
+
+      SiteSetting.cache_onebox_response_body = true
+      SiteSetting.cache_onebox_response_body_domains = "example.net|example.com|example.org"
+    end
+
+    it "caches when domain matches" do
+      preview = Oneboxer.preview(url, invalidate_oneboxes: true)
+      expect(Oneboxer.cached_response_body_exists?(url)).to eq(true)
+      expect(Oneboxer.fetch_cached_response_body(url)).to eq(html)
+    end
+
+    it "ignores cache when domain not present" do
+      preview = Oneboxer.preview(url2, invalidate_oneboxes: true)
+      expect(Oneboxer.cached_response_body_exists?(url2)).to eq(false)
     end
   end
 

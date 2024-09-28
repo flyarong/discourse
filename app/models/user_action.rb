@@ -283,14 +283,14 @@ class UserAction < ActiveRecord::Base
           update_like_count(user_id, hash[:action_type], 1)
         end
 
-        # move into Topic perhaps
         group_ids = nil
         if topic && topic.category && topic.category.read_restricted
-          group_ids = topic.category.groups.pluck("groups.id")
+          group_ids = [Group::AUTO_GROUPS[:admins]]
+          group_ids.concat(topic.category.groups.pluck("groups.id"))
         end
 
         if action.user
-          MessageBus.publish("/u/#{action.user.username.downcase}", action.id, user_ids: [user_id], group_ids: group_ids)
+          MessageBus.publish("/u/#{action.user.username_lower}", action.id, user_ids: [user_id], group_ids: group_ids)
         end
 
         action
@@ -464,9 +464,9 @@ end
 #
 #  idx_unique_rows                                   (action_type,user_id,target_topic_id,target_post_id,acting_user_id) UNIQUE
 #  idx_user_actions_speed_up_user_all                (user_id,created_at,action_type)
-#  index_actions_on_acting_user_id                   (acting_user_id)
-#  index_actions_on_user_id_and_action_type          (user_id,action_type)
+#  index_user_actions_on_acting_user_id              (acting_user_id)
 #  index_user_actions_on_action_type_and_created_at  (action_type,created_at)
 #  index_user_actions_on_target_post_id              (target_post_id)
 #  index_user_actions_on_target_user_id              (target_user_id) WHERE (target_user_id IS NOT NULL)
+#  index_user_actions_on_user_id_and_action_type     (user_id,action_type)
 #

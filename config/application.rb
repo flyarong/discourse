@@ -3,7 +3,7 @@
 # note, we require 2.5.2 and up cause 2.5.1 had some mail bugs we no longer
 # monkey patch, so this avoids people booting with this problem version
 begin
-  if !RUBY_VERSION.match?(/^2\.(([67])|(5\.[2-9]))/)
+  if Gem::Version.new(RUBY_VERSION) < Gem::Version.new("2.5.2")
     STDERR.puts "Discourse requires Ruby 2.5.2 or up"
     exit 1
   end
@@ -55,6 +55,8 @@ require 'pry-rails' if Rails.env.development?
 
 require 'discourse_fonts'
 
+require_relative '../lib/zeitwerk_config.rb'
+
 if defined?(Bundler)
   bundler_groups = [:default]
 
@@ -91,7 +93,7 @@ module Discourse
     require_dependency 'lib/highlight_js/highlight_js'
 
     # we skip it cause we configure it in the initializer
-    # the railstie for message_bus would insert it in the
+    # the railtie for message_bus would insert it in the
     # wrong position
     config.skip_message_bus_middleware = true
     config.skip_multisite_middleware = true
@@ -109,13 +111,26 @@ module Discourse
     config.autoload_paths += Dir["#{config.root}/app/jobs"]
     config.autoload_paths += Dir["#{config.root}/app/serializers"]
     config.autoload_paths += Dir["#{config.root}/lib"]
-    config.autoload_paths += Dir["#{config.root}/lib/active_record/connection_adapters"]
     config.autoload_paths += Dir["#{config.root}/lib/common_passwords"]
     config.autoload_paths += Dir["#{config.root}/lib/highlight_js"]
     config.autoload_paths += Dir["#{config.root}/lib/i18n"]
     config.autoload_paths += Dir["#{config.root}/lib/validators/"]
 
     Rails.autoloaders.main.ignore(Dir["#{config.root}/app/models/reports"])
+    Rails.autoloaders.main.ignore(Dir["#{config.root}/lib/freedom_patches"])
+
+    def watchable_args
+      files, dirs = super
+
+      # Skip the assets directory. It doesn't contain any .rb files, so watching it
+      # is just slowing things down and raising warnings about node_modules symlinks
+      app_file_extensions = dirs.delete("#{config.root}/app")
+      Dir["#{config.root}/app/*"].reject { |path| path.end_with? "/assets" }.each do |path|
+        dirs[path] = app_file_extensions
+      end
+
+      [files, dirs]
+    end
 
     # Only load the plugins named here, in the order given (default is alphabetical).
     # :all can be used as a placeholder for all plugins not explicitly named.
@@ -123,12 +138,7 @@ module Discourse
 
     config.assets.paths += %W(#{config.root}/config/locales #{config.root}/public/javascripts)
 
-    if Rails.env == "development" || Rails.env == "test"
-      config.assets.paths << "#{config.root}/app/assets/javascripts/discourse/tests"
-      config.assets.paths << "#{config.root}/node_modules"
-    end
-
-    # Allows us to skip minifincation on some files
+    # Allows us to skip minification on some files
     config.assets.skip_minification = []
 
     # explicitly precompile any images in plugins ( /assets/images ) path
@@ -163,6 +173,11 @@ module Discourse
       confirm-new-email/bootstrap.js
       onpopstate-handler.js
       embed-application.js
+      discourse/tests/theme_qunit_ember_jquery.js
+      discourse/tests/theme_qunit_vendor.js
+      discourse/tests/theme_qunit_tests_vendor.js
+      discourse/tests/theme_qunit_helper.js
+      discourse/tests/test_starter.js
     }
 
     # Precompile all available locales
@@ -221,6 +236,9 @@ module Discourse
     # see: http://stackoverflow.com/questions/11894180/how-does-one-correctly-add-custom-sql-dml-in-migrations/11894420#11894420
     config.active_record.schema_format = :sql
 
+    # We use this in development-mode only (see development.rb)
+    config.active_record.use_schema_cache_dump = false
+
     # per https://www.owasp.org/index.php/Password_Storage_Cheat_Sheet
     config.pbkdf2_iterations = 64000
     config.pbkdf2_algorithm = "sha256"
@@ -275,7 +293,7 @@ module Discourse
     # our setup does not use rack cache and instead defers to nginx
     config.action_dispatch.rack_cache = nil
 
-    # ember stuff only used for asset precompliation, production variant plays up
+    # ember stuff only used for asset precompilation, production variant plays up
     config.ember.variant = :development
     config.ember.ember_location = "#{Rails.root}/vendor/assets/javascripts/production/ember.js"
     config.ember.handlebars_location = "#{Rails.root}/vendor/assets/javascripts/handlebars.js"

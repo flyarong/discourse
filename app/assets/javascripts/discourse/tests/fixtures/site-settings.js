@@ -12,17 +12,6 @@ export default {
         type: "string"
       },
       {
-        setting: "contact_email",
-        description:
-          "Email address of key contact responsible for this site. Used for critical notifications, as well as on the /about contact form for urgent matters.",
-        default: "",
-        value: "",
-        category: "required",
-        preview: null,
-        secret: false,
-        type: "email"
-      },
-      {
         setting: "site_contact_username",
         description:
           "A valid staff username to send all automated messages from. If left blank the default System account will be used.",

@@ -19,6 +19,7 @@ class CurrentUserSerializer < BasicUserSerializer
              :dynamic_favicon,
              :trust_level,
              :can_send_private_email_messages,
+             :can_send_private_messages,
              :can_edit,
              :can_invite_to_forum,
              :no_password,
@@ -27,16 +28,27 @@ class CurrentUserSerializer < BasicUserSerializer
              :redirected_to_top,
              :custom_fields,
              :muted_category_ids,
+             :regular_category_ids,
+             :tracked_category_ids,
+             :watched_first_post_category_ids,
+             :watched_category_ids,
              :muted_tag_ids,
+             :watched_tags,
+             :watching_first_post_tags,
+             :tracked_tags,
+             :muted_tags,
+             :regular_tags,
              :dismissed_banner_key,
              :is_anonymous,
              :reviewable_count,
              :read_faq,
              :automatically_unpin_topics,
              :mailing_list_mode,
+             :treat_as_new_topic_start_date,
              :previous_visit_at,
              :seen_notification_id,
              :primary_group_id,
+             :flair_group_id,
              :can_create_topic,
              :can_create_group,
              :link_posting_access,
@@ -51,9 +63,16 @@ class CurrentUserSerializer < BasicUserSerializer
              :featured_topic,
              :skip_new_user_tips,
              :do_not_disturb_until,
+             :has_topic_draft,
+             :can_review,
 
   def groups
-    object.visible_groups.pluck(:id, :name).map { |id, name| { id: id, name: name } }
+    owned_group_ids = GroupUser.where(user_id: id, owner: true).pluck(:group_id).to_set
+    object.visible_groups.pluck(:id, :name).map do |id, name|
+      group = { id: id, name: name }
+      group[:owner] = true if owned_group_ids.include?(id)
+      group
+    end
   end
 
   def link_posting_access
@@ -124,6 +143,10 @@ class CurrentUserSerializer < BasicUserSerializer
     scope.can_send_private_messages_to_email?
   end
 
+  def can_send_private_messages
+    scope.can_send_private_message?(Discourse.system_user)
+  end
+
   def can_edit
     true
   end
@@ -174,11 +197,49 @@ class CurrentUserSerializer < BasicUserSerializer
   end
 
   def muted_category_ids
-    CategoryUser.lookup(object, :muted).pluck(:category_id)
+    categories_with_notification_level(:muted)
   end
 
+  def regular_category_ids
+    categories_with_notification_level(:regular)
+  end
+
+  def tracked_category_ids
+    categories_with_notification_level(:tracking)
+  end
+
+  def watched_category_ids
+    categories_with_notification_level(:watching)
+  end
+
+  def watched_first_post_category_ids
+    categories_with_notification_level(:watching_first_post)
+  end
+
+  # this is a weird outlier that is used for topic tracking state which
+  # needs the actual ids, which is why it is duplicated with muted_tags
   def muted_tag_ids
     TagUser.lookup(object, :muted).pluck(:tag_id)
+  end
+
+  def muted_tags
+    tags_with_notification_level(:muted)
+  end
+
+  def tracked_tags
+    tags_with_notification_level(:tracking)
+  end
+
+  def watching_first_post_tags
+    tags_with_notification_level(:watching_first_post)
+  end
+
+  def watched_tags
+    tags_with_notification_level(:watching)
+  end
+
+  def regular_tags
+    tags_with_notification_level(:regular)
   end
 
   def ignored_users
@@ -211,8 +272,16 @@ class CurrentUserSerializer < BasicUserSerializer
     Reviewable.list_for(object).count
   end
 
+  def can_review
+    scope.can_see_review_queue?
+  end
+
   def mailing_list_mode
     object.user_option.mailing_list_mode
+  end
+
+  def treat_as_new_topic_start_date
+    object.user_option.treat_as_new_topic_start_date
   end
 
   def skip_new_user_tips
@@ -237,5 +306,13 @@ class CurrentUserSerializer < BasicUserSerializer
 
   def featured_topic
     object.user_profile.featured_topic
+  end
+
+  def has_topic_draft
+    true
+  end
+
+  def include_has_topic_draft?
+    Draft.has_topic_draft(object)
   end
 end

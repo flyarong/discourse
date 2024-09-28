@@ -126,6 +126,18 @@ export default createWidget("header-topic-info", {
         const parentCategory = category.get("parentCategory");
         const categories = [];
         if (parentCategory) {
+          if (
+            this.siteSettings.max_category_nesting > 2 &&
+            !this.site.mobileView
+          ) {
+            const grandParentCategory = parentCategory.get("parentCategory");
+            if (grandParentCategory) {
+              categories.push(
+                this.attach("category-link", { category: grandParentCategory })
+              );
+            }
+          }
+
           categories.push(
             this.attach("category-link", { category: parentCategory })
           );
@@ -223,7 +235,9 @@ export default createWidget("header-topic-info", {
   jumpToTopPost() {
     const topic = this.attrs.topic;
     if (topic) {
-      DiscourseURL.routeTo(topic.get("firstPostUrl"));
+      DiscourseURL.routeTo(topic.get("firstPostUrl"), {
+        keepFilter: true,
+      });
     }
   },
 });

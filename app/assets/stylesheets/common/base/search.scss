@@ -1,3 +1,7 @@
+.search-highlight {
+  font-weight: bold;
+}
+
 .search-container {
   display: flex;
   justify-content: space-between;
@@ -81,8 +85,25 @@
       justify-content: flex-start;
       align-items: stretch;
       flex-wrap: wrap;
+      padding-right: 2.6em; // placeholder for fixed position bulk search button
       button {
         margin: 0 0.5em 0.5em 0;
+      }
+
+      .bulk-select-container {
+        order: 2; // last button
+        margin-left: auto;
+        z-index: z("dropdown"); // below composer
+      }
+
+      #bulk-select {
+        position: fixed;
+        right: unset;
+        margin: 0;
+        button {
+          margin: 0;
+          box-shadow: 0 0 0.4em 0.45em var(--secondary); // slight fade behind the button, because it can overlay content
+        }
       }
     }
 
@@ -131,6 +152,7 @@
       font-size: $font-up-1;
       background: var(--primary-low);
       padding: 0.358em 1em;
+      margin-bottom: 0;
       @include breakpoint(medium) {
         padding: 0.358em 0.5em;
       }
@@ -272,12 +294,13 @@
   }
 
   a.search-link:visited .topic-title {
-    color: var(--tertiary-high);
+    color: var(--primary-medium);
   }
   .search-link {
     .topic-title {
-      font-size: $font-up-2;
+      font-size: $font-up-1;
       line-height: $line-height-medium;
+      color: var(--primary);
     }
     .topic-statuses {
       display: inline-block;

@@ -1,6 +1,6 @@
 import EmberObject, { set } from "@ember/object";
 import { and, equal, not, or, reads } from "@ember/object/computed";
-import { cancel, later, next, throttle } from "@ember/runloop";
+import { next, throttle } from "@ember/runloop";
 import discourseComputed, {
   observes,
   on,
@@ -78,6 +78,7 @@ const CLOSED = "closed",
     action: "action",
     title: "title",
     categoryId: "categoryId",
+    tags: "tags",
     archetypeId: "archetypeId",
     whisper: "whisper",
     metaData: "metaData",
@@ -112,7 +113,6 @@ const Composer = RestModel.extend({
   unlistTopic: false,
   noBump: false,
   draftSaving: false,
-  draftSaved: false,
   draftForceSave: false,
 
   archetypes: reads("site.archetypes"),
@@ -150,8 +150,23 @@ const Composer = RestModel.extend({
 
   @discourseComputed("category")
   minimumRequiredTags(category) {
-    return category && category.minimum_required_tags > 0
-      ? category.minimum_required_tags
+    if (category) {
+      if (category.required_tag_groups) {
+        return category.min_tags_from_required_group;
+      } else {
+        return category.minimum_required_tags > 0
+          ? category.minimum_required_tags
+          : null;
+      }
+    }
+
+    return null;
+  },
+
+  @discourseComputed("category")
+  requiredTagGroups(category) {
+    return category && category.required_tag_groups
+      ? category.required_tag_groups
       : null;
   },
 
@@ -464,7 +479,7 @@ const Composer = RestModel.extend({
 
   @discourseComputed("metaData")
   hasMetaData(metaData) {
-    return metaData ? isEmpty(Ember.keys(metaData)) : false;
+    return metaData ? isEmpty(Object.keys(metaData)) : false;
   },
 
   replyDirty: propertyNotEqual("reply", "originalText"),
@@ -677,27 +692,44 @@ const Composer = RestModel.extend({
     }
   },
 
-  /*
-     Open a composer
+  /**
+    Open a composer
 
-     opts:
-       action   - The action we're performing: edit, reply or createTopic
-       post     - The post we're replying to, if present
-       topic    - The topic we're replying to, if present
-       quote    - If we're opening a reply from a quote, the quote we're making
-  */
+    @method open
+    @param {Object} opts
+      @param {String} opts.action The action we're performing: edit, reply, createTopic, createSharedDraft, privateMessage
+      @param {String} opts.draftKey
+      @param {String} opts.draftSequence
+      @param {Post} [opts.post] The post we're replying to, if present
+      @param {Topic} [opts.topic] The topic we're replying to, if present
+      @param {String} [opts.quote] If we're opening a reply from a quote, the quote we're making
+      @param {String} [opts.reply]
+      @param {String} [opts.recipients]
+      @param {Number} [opts.composerTime]
+      @param {Number} [opts.typingTime]
+      @param {Boolean} [opts.whisper]
+      @param {Boolean} [opts.noBump]
+      @param {String} [opts.archetypeId] One of `site.archetypes` e.g. `regular` or `private_message`
+      @param {Object} [opts.metaData]
+      @param {Number} [opts.categoryId]
+      @param {Number} [opts.postId]
+      @param {Number} [opts.destinationCategoryId]
+      @param {String} [opts.title]
+  **/
   open(opts) {
     let promise = Promise.resolve();
 
     if (!opts) {
       opts = {};
     }
+
     this.set("loading", true);
 
-    const replyBlank = isEmpty(this.reply);
-
-    const composer = this;
-    if (!replyBlank && (opts.reply || isEdit(opts.action)) && this.replyDirty) {
+    if (
+      !isEmpty(this.reply) &&
+      (opts.reply || isEdit(opts.action)) &&
+      this.replyDirty
+    ) {
       return promise;
     }
 
@@ -740,6 +772,15 @@ const Composer = RestModel.extend({
       if (!this.topic) {
         this.set("topic", opts.post.topic);
       }
+    } else if (opts.postId) {
+      promise = promise.then(() =>
+        this.store.find("post", opts.postId).then((post) => {
+          this.set("post", post);
+          if (post) {
+            this.set("topic", post.topic);
+          }
+        })
+      );
     } else {
       this.set("post", null);
     }
@@ -764,19 +805,8 @@ const Composer = RestModel.extend({
       (c) => c.topic_template
     );
 
-    if (opts.postId) {
-      promise = promise.then(() =>
-        this.store.find("post", opts.postId).then((post) => {
-          composer.set("post", post);
-          if (post) {
-            composer.set("topic", post.topic);
-          }
-        })
-      );
-    }
-
     // If we are editing a post, load it.
-    if (isEdit(opts.action) && opts.post) {
+    if (isEdit(opts.action) && this.post) {
       const topicProps = this.serialize(_edit_topic_serializer);
       topicProps.loading = true;
 
@@ -786,30 +816,40 @@ const Composer = RestModel.extend({
       }
       this.setProperties(topicProps);
 
-      promise = promise.then(() =>
-        this.store.find("post", opts.post.id).then((post) => {
-          composer.setProperties({
-            reply: post.raw,
-            originalText: post.raw,
-            post: post,
-          });
+      promise = promise.then(() => {
+        let rawPromise = Promise.resolve();
 
-          promise = Promise.resolve();
-          // edge case ... make a post then edit right away
-          // store does not have topic for the post
-          if (composer.topic && composer.topic.id === post.topic_id) {
-            // nothing to do ... we have the right topic
-          } else {
-            promise = this.store.find("topic", post.topic_id).then((topic) => {
+        if (!this.post.raw) {
+          rawPromise = this.store.find("post", opts.post.id).then((post) => {
+            this.setProperties({
+              post,
+              reply: post.raw,
+              originalText: post.raw,
+            });
+          });
+        } else {
+          this.setProperties({
+            reply: this.post.raw,
+            originalText: this.post.raw,
+          });
+        }
+
+        // edge case ... make a post then edit right away
+        // store does not have topic for the post
+        if (this.topic && this.topic.id === this.post.topic_id) {
+          // nothing to do ... we have the right topic
+        } else {
+          rawPromise = this.store
+            .find("topic", this.post.topic_id)
+            .then((topic) => {
               this.set("topic", topic);
             });
-          }
+        }
 
-          return promise.then(() => {
-            composer.appEvents.trigger("composer:reply-reloaded", composer);
-          });
-        })
-      );
+        return rawPromise.then(() => {
+          this.appEvents.trigger("composer:reply-reloaded", this);
+        });
+      });
     } else if (opts.action === REPLY && opts.quote) {
       this.setProperties({
         reply: opts.quote,
@@ -832,7 +872,7 @@ const Composer = RestModel.extend({
 
     if (!isEdit(opts.action) || !opts.post) {
       promise = promise.then(() =>
-        composer.appEvents.trigger("composer:reply-reloaded", composer)
+        this.appEvents.trigger("composer:reply-reloaded", this)
       );
     }
 
@@ -930,23 +970,28 @@ const Composer = RestModel.extend({
     this.set("composeState", SAVING);
 
     const rollback = throwAjaxError((error) => {
-      post.set("cooked", oldCooked);
+      post.setProperties("cooked", oldCooked);
       this.set("composeState", OPEN);
       if (error.jqXHR && error.jqXHR.status === 409) {
         this.set("editConflict", true);
       }
     });
 
+    post.setProperties({ cooked: props.cooked, staged: true });
+    this.appEvents.trigger("post-stream:refresh", { id: post.id });
+
     return promise
       .then(() => {
-        // rest model only sets props after it is saved
-        post.set("cooked", props.cooked);
         return post.save(props).then((result) => {
           this.clearState();
           return result;
         });
       })
-      .catch(rollback);
+      .catch(rollback)
+      .finally(() => {
+        post.set("staged", false);
+        this.appEvents.trigger("post-stream:refresh", { id: post.id });
+      });
   },
 
   serialize(serializer, dest) {
@@ -1153,15 +1198,9 @@ const Composer = RestModel.extend({
     }
 
     this.setProperties({
-      draftSaved: false,
       draftSaving: true,
       draftConflictUser: null,
     });
-
-    if (this._clearingStatus) {
-      cancel(this._clearingStatus);
-      this._clearingStatus = null;
-    }
 
     let data = this.serialize(_draft_serializer);
 
@@ -1187,7 +1226,7 @@ const Composer = RestModel.extend({
           });
         } else {
           this.setProperties({
-            draftSaved: true,
+            draftStatus: null,
             draftConflictUser: null,
             draftForceSave: false,
           });
@@ -1238,23 +1277,6 @@ const Composer = RestModel.extend({
       .finally(() => {
         this.set("draftSaving", false);
       });
-  },
-
-  @observes("title", "reply")
-  dataChanged() {
-    const draftStatus = this.draftStatus;
-
-    if (draftStatus && !this._clearingStatus) {
-      this._clearingStatus = later(
-        this,
-        () => {
-          this.setProperties({ draftStatus: null, draftConflictUser: null });
-          this._clearingStatus = null;
-          this.setProperties({ draftSaving: false, draftSaved: false });
-        },
-        Ember.Test ? 0 : 1000
-      );
-    }
   },
 });
 

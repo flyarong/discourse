@@ -3,7 +3,6 @@
 require "rails_helper"
 
 describe HasCustomFields do
-
   context "custom_fields" do
     before do
       DB.exec("create temporary table custom_fields_test_items(id SERIAL primary key)")
@@ -104,7 +103,6 @@ describe HasCustomFields do
     end
 
     it "handles arrays properly" do
-
       CustomFieldsTestItem.register_custom_field_type "array", [:integer]
       test_item = CustomFieldsTestItem.new
       test_item.custom_fields = { "array" => ["1"] }
@@ -136,6 +134,19 @@ describe HasCustomFields do
       expect(db_item.custom_fields).to eq({})
     end
 
+    it "deletes nil-filled arrays" do
+      test_item = CustomFieldsTestItem.create!
+      db_item = CustomFieldsTestItem.find(test_item.id)
+
+      db_item.custom_fields.update("a" => [nil, nil])
+      db_item.save_custom_fields
+      db_item.custom_fields.delete("a")
+      expect(db_item.custom_fields).to eq({})
+
+      db_item.save_custom_fields
+      expect(db_item.custom_fields).to eq({})
+    end
+
     it "casts integers in arrays properly without error" do
       test_item = CustomFieldsTestItem.new
       test_item.custom_fields = { "a" => ["b", 10, "d"] }
@@ -146,7 +157,7 @@ describe HasCustomFields do
       expect(db_item.custom_fields).to eq("a" => ["b", "10", "d"])
     end
 
-    it "supportes type coersion" do
+    it "supports type coercion" do
       test_item = CustomFieldsTestItem.new
       CustomFieldsTestItem.register_custom_field_type("bool", :boolean)
       CustomFieldsTestItem.register_custom_field_type("int", :integer)

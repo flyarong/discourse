@@ -2,9 +2,6 @@
   position: fixed;
   right: 0;
   box-shadow: shadow("header");
-  &.animate {
-    transition: right 0.2s ease-out, left 0.2s ease-out;
-  }
 
   .panel-body {
     width: 100%;
@@ -68,6 +65,7 @@
     flex-wrap: wrap;
 
     .show-all {
+      display: flex;
       flex: 1 1 auto;
       button {
         width: 100%;
@@ -115,28 +113,30 @@
 }
 
 .menu-panel {
-  li,
-  li.heading {
-    a.widget-link,
-    a.categories-link {
-      padding: 0.25em 0.5em;
-      display: block;
-      color: var(--primary);
-      &:hover,
-      &:focus {
-        background-color: var(--highlight-medium);
-        outline: none;
-      }
+  .widget-link,
+  .categories-link {
+    padding: 0.25em 0.5em;
+    display: block;
+    color: var(--primary);
+    &:hover,
+    &:focus {
+      background-color: var(--highlight-medium);
+      outline: none;
+    }
 
-      .d-icon {
-        color: var(--primary-medium);
-      }
+    .d-icon {
+      color: var(--primary-medium);
     }
 
     .new {
       font-size: $font-down-1;
       margin-left: 0.5em;
       color: var(--primary-med-or-secondary-med);
+    }
+
+    &.show-help,
+    &.filter {
+      color: var(--tertiary);
     }
   }
 
@@ -224,6 +224,12 @@
       color: var(--primary-high);
     }
 
+    .btn-primary {
+      .d-icon {
+        color: var(--secondary);
+      }
+    }
+
     ul {
       display: flex;
       flex-flow: column wrap;
@@ -278,20 +284,35 @@
         }
       }
 
-      &:hover,
-      &:focus {
+      &:hover {
         background-color: var(--highlight-medium);
         outline: none;
       }
 
+      &:focus-within {
+        background: var(--highlight-medium);
+        a {
+          // we don't need the link focus because we're styling the parent
+          outline: 0;
+        }
+        .btn-flat:focus {
+          // undo default btn-flat style
+          background: transparent;
+        }
+      }
+
       a {
         display: flex;
+        margin: 0.25em;
+        padding: 0em 0.25em;
+      }
+
+      button {
+        padding: 0.25em 0.5em;
       }
 
       a,
       button {
-        padding: 0.25em 0.5em;
-
         > div {
           overflow: hidden; // clears the text from wrapping below icons
           overflow-wrap: anywhere;
@@ -437,7 +458,6 @@ div.menu-links-header {
         color: var(--primary-high);
       }
 
-      &:focus,
       &:hover {
         background-color: inherit;
       }
@@ -446,8 +466,11 @@ div.menu-links-header {
 
   button:hover,
   button:focus {
-    background-color: var(--highlight-medium);
+    background-color: var(--primary-low);
     outline: none;
+    &.active {
+      background-color: var(--primary-very-low);
+    }
   }
   button {
     padding: 0.3em 0.5em;

@@ -52,7 +52,7 @@ describe UserUpdater do
 
     it 'can update categories and tags' do
       user = Fabricate(:user)
-      updater = UserUpdater.new(acting_user, user)
+      updater = UserUpdater.new(user, user)
       updater.update(watched_tags: "#{tag.name},#{tag2.name}", muted_category_ids: [category.id])
 
       expect(TagUser.where(
@@ -72,7 +72,41 @@ describe UserUpdater do
         category_id: category.id,
         notification_level: CategoryUser.notification_levels[:muted]
       ).count).to eq(1)
+    end
 
+    context "staged user" do
+      let(:staged_user) { Fabricate(:staged) }
+
+      context "allow_changing_staged_user_tracking is false" do
+        before { SiteSetting.allow_changing_staged_user_tracking = false }
+
+        it "doesn't update muted categories and watched tags" do
+          updater = UserUpdater.new(Fabricate(:admin), staged_user)
+          updater.update(watched_tags: "#{tag.name}", muted_category_ids: [category.id])
+          expect(TagUser.exists?(user_id: staged_user.id)).to eq(false)
+          expect(CategoryUser.exists?(user_id: staged_user.id)).to eq(false)
+        end
+      end
+
+      context "allow_changing_staged_user_tracking is true" do
+        before { SiteSetting.allow_changing_staged_user_tracking = true }
+
+        it "updates muted categories and watched tags" do
+          updater = UserUpdater.new(Fabricate(:admin), staged_user)
+          updater.update(watched_tags: "#{tag.name}", muted_category_ids: [category.id])
+          expect(TagUser.exists?(
+            user_id: staged_user.id,
+            tag_id: tag.id,
+            notification_level: TagUser.notification_levels[:watching]
+          )).to eq(true)
+
+          expect(CategoryUser.exists?(
+            user_id: staged_user.id,
+            category_id: category.id,
+            notification_level: CategoryUser.notification_levels[:muted]
+          )).to eq(true)
+        end
+      end
     end
 
     it "doesn't remove notification prefs when updating something else" do
@@ -173,7 +207,7 @@ describe UserUpdater do
       expect(user.user_option.mailing_list_mode).to eq true
     end
 
-    it "filters theme_ids blank values before updating perferences" do
+    it "filters theme_ids blank values before updating preferences" do
       user = Fabricate(:user)
       user.user_option.update!(theme_ids: [1])
       updater = UserUpdater.new(acting_user, user)
@@ -367,6 +401,21 @@ describe UserUpdater do
 
         user.reload
         expect(user.primary_group_id).to eq new_group.id
+      end
+    end
+
+    context 'when updating flair group' do
+      let(:group) { Fabricate(:group, name: "Group", flair_bg_color: "#111111", flair_color: "#999999", flair_icon: "icon") }
+      let(:user) { Fabricate(:user) }
+
+      it 'updates when setting is enabled' do
+        group.add(user)
+
+        UserUpdater.new(acting_user, user).update(flair_group_id: group.id)
+        expect(user.reload.flair_group_id).to eq(group.id)
+
+        UserUpdater.new(acting_user, user).update(flair_group_id: "")
+        expect(user.reload.flair_group_id).to eq(nil)
       end
     end
 

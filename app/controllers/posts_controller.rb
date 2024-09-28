@@ -61,7 +61,7 @@ class PostsController < ApplicationController
         .where('posts.id <= ?', last_post_id)
         .where('posts.id > ?', last_post_id - 50)
         .includes(topic: :category)
-        .includes(user: :primary_group)
+        .includes(user: [:primary_group, :flair_group])
         .includes(:reply_to_user)
         .limit(50)
       rss_description = I18n.t("rss_description.private_posts")
@@ -71,7 +71,7 @@ class PostsController < ApplicationController
         .where('posts.id <= ?', last_post_id)
         .where('posts.id > ?', last_post_id - 50)
         .includes(topic: :category)
-        .includes(user: :primary_group)
+        .includes(user: [:primary_group, :flair_group])
         .includes(:reply_to_user)
         .limit(50)
       rss_description = I18n.t("rss_description.posts")
@@ -208,6 +208,10 @@ class PostsController < ApplicationController
       edit_reason: params[:post][:edit_reason]
     }
 
+    Post.plugin_permitted_update_params.keys.each do |param|
+      changes[param] = params[:post][param]
+    end
+
     raw_old = params[:post][:raw_old]
     if raw_old.present? && raw_old != post.raw
       return render_json_error(I18n.t('edit_conflict'), status: 409)
@@ -243,7 +247,7 @@ class PostsController < ApplicationController
     return render_json_error(post) if post.errors.present?
     return render_json_error(topic) if topic.errors.present?
 
-    post_serializer = PostSerializer.new(post, scope: guardian, root: false)
+    post_serializer = PostSerializer.new(post, scope: guardian, root: false, add_raw: true)
     post_serializer.draft_sequence = DraftSequence.current(current_user, topic.draft_key)
     link_counts = TopicLink.counts_for(guardian, topic, [post])
     post_serializer.single_post_link_counts = link_counts[post.id] if link_counts.present?
@@ -359,6 +363,8 @@ class PostsController < ApplicationController
     raise Discourse::InvalidParameters.new(:post_ids) if posts.pluck(:id) == params[:post_ids]
     PostMerger.new(current_user, posts).merge
     render body: nil
+  rescue PostMerger::CannotMergeError => e
+    render_json_error(e.message)
   end
 
   # Direct replies to this post

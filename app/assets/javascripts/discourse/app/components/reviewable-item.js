@@ -29,11 +29,16 @@ export default Component.extend({
 
   @discourseComputed(
     "reviewable.type",
+    "reviewable.last_performing_username",
     "siteSettings.blur_tl0_flagged_posts_media",
     "reviewable.target_created_by_trust_level"
   )
-  customClasses(type, blurEnabled, trustLevel) {
+  customClasses(type, lastPerformingUsername, blurEnabled, trustLevel) {
     let classes = type.dasherize();
+
+    if (lastPerformingUsername) {
+      classes = `${classes} reviewable-stale`;
+    }
 
     if (blurEnabled && trustLevel === 0) {
       classes = `${classes} blur-images`;
@@ -138,7 +143,10 @@ export default Component.extend({
 
           // "fast track" to update the current user's reviewable count before the message bus finds out.
           if (performResult.reviewable_count !== undefined) {
-            this.currentUser.set("reviewable_count", result.reviewable_count);
+            this.currentUser.set(
+              "reviewable_count",
+              performResult.reviewable_count
+            );
           }
 
           if (this.attrs.remove) {

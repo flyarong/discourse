@@ -7,9 +7,13 @@ Discourse::Application.configure do
   # every request.  This slows down response time but is perfect for development
   # since you don't have to restart the web server when you make code changes.
   config.cache_classes = false
+  config.file_watcher = ActiveSupport::EventedFileUpdateChecker
 
   # Log error messages when you accidentally call methods on nil.
   config.eager_load = false
+
+  # Use the schema_cache.yml file generated during db:migrate (via db:schema:cache:dump)
+  config.active_record.use_schema_cache_dump = true
 
   # Show full error reports and disable caching
   config.consider_all_requests_local       = true
@@ -80,7 +84,7 @@ Discourse::Application.configure do
     config.developer_emails = emails.split(",").map(&:downcase).map(&:strip)
   end
 
-  if defined?(Rails::Server) || defined?(Puma) || defined?(Unicorn)
+  if ENV["DISCOURSE_SKIP_CSS_WATCHER"] != "1" && (defined?(Rails::Server) || defined?(Puma) || defined?(Unicorn))
     require 'stylesheet/watcher'
     STDERR.puts "Starting CSS change watcher"
     @watcher = Stylesheet::Watcher.watch

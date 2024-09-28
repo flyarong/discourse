@@ -8,10 +8,6 @@ class ApiKeyScope < ActiveRecord::Base
     def list_actions
       actions = %w[list#category_feed]
 
-      TopTopic.periods.each do |p|
-        actions.concat(["list#category_top_#{p}", "list#top_#{p}", "list#top_#{p}_feed"])
-      end
-
       %i[latest unread new top].each { |f| actions.concat(["list#category_#{f}", "list##{f}"]) }
 
       actions
@@ -33,6 +29,9 @@ class ApiKeyScope < ActiveRecord::Base
           },
           wordpress: { actions: %w[topics#wordpress], params: %i[topic_id] }
         },
+        posts: {
+          edit: { actions: %w[posts#update], params: %i[id] }
+        },
         users: {
           bookmarks: { actions: %w[users#bookmarks], params: %i[username] },
           sync_sso: { actions: %w[admin/users#sync_sso], params: %i[sso sig] },
@@ -42,6 +41,7 @@ class ApiKeyScope < ActiveRecord::Base
           log_out: { actions: %w[admin/users#log_out] },
           anonymize: { actions: %w[admin/users#anonymize] },
           delete: { actions: %w[admin/users#destroy] },
+          list: { actions: %w[admin/users#index] },
         },
         email: {
           receive_emails: { actions: %w[admin/email#handle_mail] }
@@ -84,7 +84,9 @@ class ApiKeyScope < ActiveRecord::Base
         excluded_paths = %w[/new-topic /new-message /exception]
 
         memo.tap do |m|
-          m << path if actions.include?(action) && api_supported_path && !excluded_paths.include?(path)
+          if actions.include?(action) && api_supported_path && !excluded_paths.include?(path)
+            m << "#{path} (#{route.verb})"
+          end
         end
       end
     end

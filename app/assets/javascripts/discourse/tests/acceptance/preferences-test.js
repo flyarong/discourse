@@ -1,5 +1,6 @@
 import {
   acceptance,
+  count,
   exists,
   queryAll,
   updateCurrentUser,
@@ -126,7 +127,7 @@ acceptance("User Preferences", function (needs) {
 
     await click(".preferences-nav .nav-interface a");
     await click(".control-group.other input[type=checkbox]:nth-of-type(1)");
-    savePreferences();
+    await savePreferences();
 
     assert.ok(
       !exists(".preferences-nav .nav-apps a"),
@@ -495,28 +496,64 @@ acceptance("Security", function (needs) {
       I18n.t("user.auth_tokens.show_all", { count: 3 }),
       "it should display two tokens"
     );
-    assert.ok(
-      queryAll(".pref-auth-tokens .auth-token").length === 2,
+    assert.equal(
+      count(".pref-auth-tokens .auth-token"),
+      2,
       "it should display two tokens"
     );
 
     await click(".pref-auth-tokens > a:nth-of-type(1)");
 
-    assert.ok(
-      queryAll(".pref-auth-tokens .auth-token").length === 3,
+    assert.equal(
+      count(".pref-auth-tokens .auth-token"),
+      3,
       "it should display three tokens"
     );
 
     await click(".auth-token-dropdown button:nth-of-type(1)");
     await click("li[data-value='notYou']");
 
-    assert.ok(queryAll(".d-modal:visible").length === 1, "modal should appear");
+    assert.equal(count(".d-modal:visible"), 1, "modal should appear");
 
     await click(".modal-footer .btn-primary");
 
-    assert.ok(
-      queryAll(".pref-password.highlighted").length === 1,
+    assert.equal(
+      count(".pref-password.highlighted"),
+      1,
       "it should highlight password preferences"
     );
   });
 });
+
+acceptance(
+  "User Preferences for staged user and don't allow tracking prefs",
+  function (needs) {
+    needs.settings({
+      allow_changing_staged_user_tracking: false,
+      tagging_enabled: true,
+    });
+    needs.pretender(preferencesPretender);
+
+    test("staged user doesn't show category and tag preferences", async function (assert) {
+      await visit("/u/staged/preferences");
+
+      assert.ok($("body.user-preferences-page").length, "has the body class");
+      assert.equal(
+        currentURL(),
+        "/u/staged/preferences/account",
+        "defaults to account tab"
+      );
+      assert.ok(exists(".user-preferences"), "it shows the preferences");
+
+      assert.ok(
+        !exists(".preferences-nav .nav-categories a"),
+        "categories tab isn't there for staged users"
+      );
+
+      assert.ok(
+        !exists(".preferences-nav .nav-tags a"),
+        "tags tab isn't there for staged users"
+      );
+    });
+  }
+);

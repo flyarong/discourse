@@ -32,7 +32,7 @@ module DiscourseTagging
 
       # tag names which are visible, but not usable, by *some users*
       readonly_tags = DiscourseTagging.readonly_tag_names(guardian)
-      # tags names which are not visibile or usuable by this user
+      # tags names which are not visible or usable by this user
       hidden_tags = DiscourseTagging.hidden_tag_names(guardian)
 
       # tag names which ARE permitted by *this user*
@@ -127,36 +127,43 @@ module DiscourseTagging
         topic.tags = []
       end
       topic.tags_changed = true
+
+      DiscourseEvent.trigger(
+        :topic_tags_changed,
+        topic, old_tag_names: old_tag_names, new_tag_names: topic.tags.map(&:name)
+      )
+
       return true
     end
     false
   end
 
-  def self.validate_min_required_tags_for_category(guardian, topic, category, tags = [])
+  def self.validate_min_required_tags_for_category(guardian, model, category, tags = [])
     if !guardian.is_staff? &&
         category &&
         category.minimum_required_tags > 0 &&
         tags.length < category.minimum_required_tags
 
-      topic.errors.add(:base, I18n.t("tags.minimum_required_tags", count: category.minimum_required_tags))
+      model.errors.add(:base, I18n.t("tags.minimum_required_tags", count: category.minimum_required_tags))
       false
     else
       true
     end
   end
 
-  def self.validate_required_tags_from_group(guardian, topic, category, tags = [])
+  def self.validate_required_tags_from_group(guardian, model, category, tags = [])
     if !guardian.is_staff? &&
         category &&
         category.required_tag_group &&
         (tags.length < category.min_tags_from_required_group ||
           category.required_tag_group.tags.where("tags.id in (?)", tags.map(&:id)).count < category.min_tags_from_required_group)
 
-      topic.errors.add(:base,
+      model.errors.add(:base,
         I18n.t(
           "tags.required_tags_from_group",
           count: category.min_tags_from_required_group,
-          tag_group_name: category.required_tag_group.name
+          tag_group_name: category.required_tag_group.name,
+          tags: category.required_tag_group.tags.pluck(:name).join(", ")
         )
       )
       false
@@ -304,7 +311,13 @@ module DiscourseTagging
       sql.gsub!("/*and_name_like*/", "")
     end
 
-    if opts[:for_input] && filter_for_non_staff && category&.required_tag_group
+    # show required tags for non-staff
+    # or for staff when
+    # - there are more available tags than the query limit
+    # - and no search term has been included
+    filter_required_tags = category&.required_tag_group && (filter_for_non_staff || (term.blank? && category&.required_tag_group&.tags.size >= opts[:limit].to_i))
+
+    if opts[:for_input] && filter_required_tags
       required_tag_ids = category.required_tag_group.tags.pluck(:id)
       if (required_tag_ids & selected_tag_ids).size < category.min_tags_from_required_group
         builder.where("id IN (?)", required_tag_ids)
@@ -357,7 +370,15 @@ module DiscourseTagging
       builder.where("id NOT IN (SELECT target_tag_id FROM tags WHERE target_tag_id IS NOT NULL)")
     end
 
-    builder.limit(opts[:limit]) if opts[:limit]
+    if opts[:limit]
+      if required_tag_ids && term.blank?
+        # override limit so all required tags are shown by default
+        builder.limit(required_tag_ids.size)
+      else
+        builder.limit(opts[:limit])
+      end
+    end
+
     if opts[:order_popularity]
       builder.order_by("topic_count DESC, name")
     elsif opts[:order_search_results] && !term.blank?

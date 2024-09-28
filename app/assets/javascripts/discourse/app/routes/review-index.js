@@ -39,6 +39,8 @@ export default DiscourseRoute.extend({
       sort_order: meta.sort_order,
       additionalFilters: meta.additional_filters || {},
     });
+
+    controller.reviewables.setEach("last_performing_username", null);
   },
 
   activate() {
@@ -51,6 +53,17 @@ export default DiscourseRoute.extend({
         reviewables.forEach((reviewable) => {
           if (data.topic_id === reviewable.topic.id) {
             reviewable.set("claimed_by", user);
+          }
+        });
+      }
+    });
+
+    this.messageBus.subscribe("/reviewable_counts", (data) => {
+      if (data.updates) {
+        this.controller.reviewables.forEach((reviewable) => {
+          const updates = data.updates[reviewable.id];
+          if (updates) {
+            reviewable.setProperties(updates);
           }
         });
       }

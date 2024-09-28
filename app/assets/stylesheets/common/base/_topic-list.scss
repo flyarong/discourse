@@ -1,8 +1,6 @@
 // Topic list navigation & controls
 
 .list-controls {
-  margin-bottom: 0.25em;
-
   .btn {
     &:not(:first-child) {
       margin-left: 0.5em;
@@ -81,6 +79,19 @@
     // need to reduce vertical padding for consistent height
     padding-top: 0.3em;
     padding-bottom: 0.3em;
+    @include breakpoint(mobile-medium) {
+      font-size: var(--font-down-1);
+    }
+  }
+  @include breakpoint(mobile-large) {
+    .edit-category {
+      .d-button-label {
+        display: none;
+      }
+      .d-icon {
+        margin: 0;
+      }
+    }
   }
 }
 
@@ -95,6 +106,11 @@
 
 .category-heading {
   max-width: 100%;
+  p {
+    margin-top: 0;
+    line-height: $line-height-large;
+    font-size: $font-up-3;
+  }
 }
 
 .category-logo.aspect-image {
@@ -196,6 +212,7 @@
     }
 
     td span {
+      position: relative; // Chrome needs this, otherwise the line is above the text
       background-color: var(--secondary);
       color: var(--danger-medium);
       padding: 0 8px;
@@ -261,8 +278,9 @@
   }
 
   .topic-excerpt {
+    display: block;
     font-size: $font-down-1;
-    margin-top: 5px;
+    margin-top: 0.33em;
     color: var(--primary-high);
     word-wrap: break-word;
     line-height: $line-height-large;
@@ -274,11 +292,15 @@
 
   .num {
     text-align: center;
-    a:not(.badge-posts) {
+
+    a {
       color: inherit;
     }
-    a.badge-posts {
-      font-weight: bold;
+
+    .badge-posts {
+      font-weight: 700;
+      color: inherit;
+      padding: 15px 5px;
     }
   }
 
@@ -374,7 +396,7 @@ div.education {
   border-top: 3px solid var(--primary-low);
   border-bottom: 1px solid var(--primary-low);
 
-  .badge-notification.new-posts {
+  .badge-notification.unread-posts {
     vertical-align: text-bottom;
   }
 }

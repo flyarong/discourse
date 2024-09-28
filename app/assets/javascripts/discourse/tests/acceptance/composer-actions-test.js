@@ -1,5 +1,6 @@
 import {
   acceptance,
+  count,
   exists,
   queryAll,
   updateCurrentUser,
@@ -110,11 +111,27 @@ acceptance("Composer Actions", function (needs) {
       "test replying as whisper to topic when initially not a whisper"
     );
 
+    assert.ok(
+      !exists(".composer-actions svg.d-icon-far-eye-slash"),
+      "whisper icon is not visible"
+    );
+    assert.equal(
+      count(".composer-actions svg.d-icon-share"),
+      1,
+      "reply icon is visible"
+    );
+
     await composerActions.expand();
     await composerActions.selectRowByValue("toggle_whisper");
 
+    assert.equal(
+      count(".composer-actions svg.d-icon-far-eye-slash"),
+      1,
+      "whisper icon is visible"
+    );
     assert.ok(
-      queryAll(".composer-fields .whisper .d-icon-far-eye-slash").length === 1
+      !exists(".composer-actions svg.d-icon-share"),
+      "reply icon is not visible"
     );
   });
 
@@ -155,7 +172,7 @@ acceptance("Composer Actions", function (needs) {
     const composerActions = selectKit(".composer-actions");
     await composerActions.expand();
     await composerActions.selectRowByValue("reply_as_new_topic");
-    assert.equal(exists(queryAll(".bootbox")), false);
+    assert.ok(!exists(".bootbox"));
   });
 
   test("reply_as_new_group_message", async function (assert) {
@@ -220,7 +237,7 @@ acceptance("Composer Actions", function (needs) {
     await composerActions.selectRowByValue("reply_to_post");
     await composerActions.expand();
 
-    assert.ok(exists(queryAll(".action-title img.avatar")));
+    assert.ok(exists(".action-title img.avatar"));
     assert.equal(
       queryAll(".action-title .user-link").text().trim(),
       "codinghorror"
@@ -277,24 +294,80 @@ acceptance("Composer Actions", function (needs) {
     await click("article#post_3 button.reply");
 
     assert.ok(
-      queryAll(".composer-fields .no-bump").length === 0,
-      "no-bump text is not visible"
+      !exists(".composer-actions svg.d-icon-anchor"),
+      "no-bump icon is not visible"
+    );
+    assert.equal(
+      count(".composer-actions svg.d-icon-share"),
+      1,
+      "reply icon is visible"
     );
 
     await composerActions.expand();
     await composerActions.selectRowByValue("toggle_topic_bump");
 
-    assert.ok(
-      queryAll(".composer-fields .no-bump").length === 1,
+    assert.equal(
+      count(".composer-actions svg.d-icon-anchor"),
+      1,
       "no-bump icon is visible"
     );
+    assert.ok(
+      !exists(".composer-actions svg.d-icon-share"),
+      "reply icon is not visible"
+    );
 
     await composerActions.expand();
     await composerActions.selectRowByValue("toggle_topic_bump");
 
     assert.ok(
-      queryAll(".composer-fields .no-bump").length === 0,
+      !exists(".composer-actions svg.d-icon-anchor"),
       "no-bump icon is not visible"
+    );
+    assert.equal(
+      count(".composer-actions svg.d-icon-share"),
+      1,
+      "reply icon is visible"
+    );
+  });
+
+  test("replying to post - whisper and no bump", async function (assert) {
+    const composerActions = selectKit(".composer-actions");
+
+    await visit("/t/internationalization-localization/280");
+    await click("article#post_3 button.reply");
+
+    assert.ok(
+      !exists(".composer-actions svg.d-icon-far-eye-slash"),
+      "whisper icon is not visible"
+    );
+    assert.ok(
+      !exists(".composer-fields .whisper .d-icon-anchor"),
+      "no-bump icon is not visible"
+    );
+    assert.equal(
+      count(".composer-actions svg.d-icon-share"),
+      1,
+      "reply icon is visible"
+    );
+
+    await composerActions.expand();
+    await composerActions.selectRowByValue("toggle_topic_bump");
+    await composerActions.expand();
+    await composerActions.selectRowByValue("toggle_whisper");
+
+    assert.equal(
+      count(".composer-actions svg.d-icon-far-eye-slash"),
+      1,
+      "whisper icon is visible"
+    );
+    assert.equal(
+      count(".composer-fields .no-bump .d-icon-anchor"),
+      1,
+      "no-bump icon is visible"
+    );
+    assert.ok(
+      !exists(".composer-actions svg.d-icon-share"),
+      "reply icon is not visible"
     );
   });
 
@@ -428,8 +501,13 @@ acceptance("Composer Actions With New Topic Draft", function (needs) {
         queryAll("#reply-control .btn-primary.create .d-button-label").text(),
         I18n.t("composer.create_shared_draft")
       );
+      assert.equal(
+        count(".composer-actions svg.d-icon-far-clipboard"),
+        1,
+        "shared draft icon is visible"
+      );
 
-      assert.ok(queryAll("#reply-control.composing-shared-draft").length === 1);
+      assert.equal(count("#reply-control.composing-shared-draft"), 1);
       await click(".modal-footer .btn.btn-default");
     } finally {
       toggleCheckDraftPopup(false);

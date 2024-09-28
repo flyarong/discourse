@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-#mixin for all guardian methods dealing with category permisions
+#mixin for all guardian methods dealing with category permissions
 module CategoryGuardian
 
   # Creating Method
@@ -19,6 +19,15 @@ module CategoryGuardian
       SiteSetting.moderators_manage_categories_and_groups &&
       is_moderator? &&
       can_see_category?(category)
+    )
+  end
+
+  def can_edit_serialized_category?(category_id:, read_restricted:)
+    is_admin? ||
+    (
+      SiteSetting.moderators_manage_categories_and_groups &&
+      is_moderator? &&
+      can_see_serialized_category?(category_id: category_id, read_restricted: read_restricted)
     )
   end
 
@@ -44,6 +53,14 @@ module CategoryGuardian
     end
 
     nil
+  end
+
+  def can_see_serialized_category?(category_id:, read_restricted: true)
+    # Guard to ensure only a boolean is passed in
+    read_restricted = true unless !!read_restricted == read_restricted
+
+    return true if !read_restricted
+    secure_category_ids.include?(category_id)
   end
 
   def can_see_category?(category)

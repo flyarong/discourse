@@ -4,6 +4,7 @@ import I18n from "I18n";
 import { createWidget } from "discourse/widgets/widget";
 import { h } from "virtual-dom";
 import { replaceEmoji } from "discourse/widgets/emoji";
+import autoGroupFlairForUser from "discourse/lib/avatar-flair";
 
 const LINKS_SHOWN = 5;
 
@@ -39,11 +40,30 @@ createWidget("topic-map-show-links", {
   },
 });
 
+let addTopicParticipantClassesCallbacks = null;
+export function addTopicParticipantClassesCallback(callback) {
+  addTopicParticipantClassesCallbacks =
+    addTopicParticipantClassesCallbacks || [];
+  addTopicParticipantClassesCallbacks.push(callback);
+}
 createWidget("topic-participant", {
   buildClasses(attrs) {
+    const classNames = [];
     if (attrs.primary_group_name) {
-      return `group-${attrs.primary_group_name}`;
+      classNames.push(`group-${attrs.primary_group_name}`);
     }
+    if (addTopicParticipantClassesCallbacks) {
+      for (let i = 0; i < addTopicParticipantClassesCallbacks.length; i++) {
+        let pluginClasses = addTopicParticipantClassesCallbacks[i].call(
+          this,
+          attrs
+        );
+        if (pluginClasses) {
+          classNames.push.apply(classNames, pluginClasses);
+        }
+      }
+    }
+    return classNames;
   },
 
   html(attrs, state) {
@@ -59,8 +79,13 @@ createWidget("topic-participant", {
       linkContents.push(h("span.post-count", attrs.post_count.toString()));
     }
 
-    if (attrs.primary_group_flair_url || attrs.primary_group_flair_bg_color) {
+    if (attrs.flair_url || attrs.flair_bg_color) {
       linkContents.push(this.attach("avatar-flair", attrs));
+    } else {
+      const autoFlairAttrs = autoGroupFlairForUser(this.site, attrs);
+      if (autoFlairAttrs) {
+        linkContents.push(this.attach("avatar-flair", autoFlairAttrs));
+      }
     }
 
     return h(
@@ -221,7 +246,9 @@ createWidget("topic-map-summary", {
     const nav = h(
       "nav.buttons",
       this.attach("button", {
-        title: "topic.toggle_information",
+        title: state.collapsed
+          ? "topic.expand_details"
+          : "topic.collapse_details",
         icon: state.collapsed ? "chevron-down" : "chevron-up",
         action: "toggleMap",
         className: "btn",

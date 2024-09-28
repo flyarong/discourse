@@ -1,22 +1,24 @@
 import Mixin from "@ember/object/mixin";
 import discourseDebounce from "discourse-common/lib/debounce";
-import { later } from "@ember/runloop";
+import { cancel, later } from "@ember/runloop";
 
 const helper = {
   offset() {
-    const mainOffset = $("#main").offset();
-    const offsetTop = mainOffset ? mainOffset.top : 0;
-    return (window.pageYOffset || $("html").scrollTop()) - offsetTop;
+    const main = document.querySelector("#main");
+    const offsetTop = main ? main.offsetTop : 0;
+    return window.pageYOffset - offsetTop;
   },
 };
 
 export default Mixin.create({
   queueDockCheck: null,
+  _initialTimer: null,
+  _queuedTimer: null,
 
   init() {
     this._super(...arguments);
     this.queueDockCheck = () => {
-      discourseDebounce(this, this.safeDockCheck, 5);
+      this._queuedTimer = discourseDebounce(this, this.safeDockCheck, 5);
     };
   },
 
@@ -30,16 +32,22 @@ export default Mixin.create({
   didInsertElement() {
     this._super(...arguments);
 
-    $(window).bind("scroll.discourse-dock", this.queueDockCheck);
-    $(document).bind("touchmove.discourse-dock", this.queueDockCheck);
+    window.addEventListener("scroll", this.queueDockCheck);
+    document.addEventListener("touchmove", this.queueDockCheck);
 
     // dockCheck might happen too early on full page refresh
-    later(this, this.safeDockCheck, 50);
+    this._initialTimer = later(this, this.safeDockCheck, 50);
   },
 
   willDestroyElement() {
     this._super(...arguments);
-    $(window).unbind("scroll.discourse-dock", this.queueDockCheck);
-    $(document).unbind("touchmove.discourse-dock", this.queueDockCheck);
+
+    if (this._queuedTimer) {
+      cancel(this._queuedTimer);
+    }
+
+    cancel(this._initialTimer);
+    window.removeEventListener("scroll", this.queueDockCheck);
+    document.removeEventListener("touchmove", this.queueDockCheck);
   },
 });

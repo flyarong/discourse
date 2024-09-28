@@ -74,9 +74,11 @@ en:
       about_json_values: "about.json contains invalid values: %{errors}"
       modifier_values: "about.json modifiers contain invalid values: %{errors}"
       git: "Error cloning git repository, access is denied or repository is not found"
+      git_ref_not_found: "Unable to checkout git reference: %{ref}"
       unpack_failed: "Failed to unpack file"
       file_too_big: "The uncompressed file is too big."
       unknown_file_type: "The file you uploaded does not appear to be a valid Discourse theme."
+      not_allowed_theme: "`%{repo}` is not in the list of allowed themes (check `allowed_theme_repos` global setting)."
     errors:
       component_no_user_selectable: "Theme components can't be user-selectable"
       component_no_default: "Theme components can't be default theme"
@@ -110,6 +112,9 @@ en:
       no_subject: "(no subject)"
       no_body: "(no body)"
       missing_attachment: "(Attachment %{filename} is missing)"
+      continuing_old_discussion:
+        one: "Continuing the discussion from [%{title}](%{url}), because it was created more than %{count} day ago."
+        other: "Continuing the discussion from [%{title}](%{url}), because it was created more than %{count} days ago."
       errors:
         empty_email_error: "Happens when the raw mail we received was blank."
         no_message_id_error: "Happens when the mail has no 'Message-Id' header."
@@ -170,7 +175,7 @@ en:
       ip_address_already_screened: "is already included in an existing rule"
       restrict_dependent_destroy:
         one: "Cannot delete record because a dependent %{record} exists"
-        many: "Cannot delete record because dependent %{record} exist"
+        other: "Cannot delete record because dependent %{record} exist"
       too_long:
         one: is too long (maximum is %{count} character)
         other: is too long (maximum is %{count} characters)
@@ -197,7 +202,7 @@ en:
       default_categories_already_selected: "You cannot select a category used in another list."
       default_tags_already_selected: "You cannot select a tag used in another list."
       s3_upload_bucket_is_required: "You cannot enable uploads to S3 unless you've provided the 's3_upload_bucket'."
-      enable_s3_uploads_is_required: "You cannot enable inventory to S3 unless you've enabled the S3 uploads."
+      enable_s3_uploads_is_required: "You cannot enable usage of the S3 inventory unless you've enabled S3 uploads."
       page_publishing_requirements: "Page publishing cannot be enabled if secure media is enabled."
       s3_backup_requires_s3_settings: "You cannot use S3 as backup location unless you've provided the '%{setting_name}'."
       s3_bucket_reused: "You cannot use the same bucket for 's3_upload_bucket' and 's3_backup_bucket'. Choose a different bucket or use a different path for each bucket."
@@ -229,19 +234,27 @@ en:
     expired: "Your invite token has expired. Please <a href='%{base_url}/about'>contact staff</a>."
     not_found: "Your invite token is invalid. Please <a href='%{base_url}/about'>contact staff</a>."
     not_found_json: "Your invite token is invalid. Please contact staff."
+    not_matching_email: "Your email address and the email address associated with the invite token do not match. Please contact staff."
     not_found_template: |
       <p>Your invite to <a href="%{base_url}">%{site_name}</a> has already been redeemed.</p>
 
       <p>If you remember your password you can <a href="%{base_url}/login">Log In</a>.</p>
 
       <p>Otherwise please <a href="%{base_url}/password-reset">Reset Password</a>.</p>
-    error_message: "There was an error accepting invite. Please contact the site's administrator."
+    not_found_template_link: |
+      <p>The invitation to <a href="%{base_url}">%{site_name}</a> can no longer be redeemed. Please ask the person who invited you to send you a new invitation.</p>
     user_exists: "There's no need to invite <b>%{email}</b>, they <a href='%{base_path}/u/%{username}/summary'>already have an account!</a>"
+    invite_exists: "You already invited <b>%{email}</b>."
+    invalid_email: "%{email} isn't a valid email address."
+    rate_limit:
+      one: "You have already sent %{count} invite in the last 24 hours, please wait %{time_left} before trying again."
+      other: "You have already sent %{count} invites in the last 24 hours, please wait %{time_left} before trying again."
     confirm_email: "<p>You’re almost done! We sent an activation mail to your email address. Please follow the instructions in the mail to activate your account.</p><p>If it doesn’t arrive, check your spam folder.</p>"
     cant_invite_to_group: "You are not allowed to invite users to specified group(s). Make sure you are owner of the group(s) you are trying to invite to."
     disabled_errors:
       discourse_connect_enabled: "Invites are disabled because DiscourseConnect is enabled."
       invalid_access: "You are not permitted to view the requested resource."
+    requires_groups: "Invite saved. To give access to the specified topic, add one of the following groups: %{groups}."
 
   bulk_invite:
     file_should_be_csv: "The uploaded file should be of csv format."
@@ -259,6 +272,7 @@ en:
     muted_topic: "Sorry, that user muted this topic."
     receiver_does_not_allow_pm: "Sorry, that user does not allow you to send them private messages."
     sender_does_not_allow_pm: "Sorry, you do not allow that user to send you private messages."
+    user_cannot_see_topic: "%{username} cannot see the topic."
 
   backup:
     operation_already_running: "An operation is currently running. Can't start a new job right now."
@@ -266,9 +280,6 @@ en:
     not_enough_space_on_disk: "There is not enough space on disk to upload this backup."
     invalid_filename: "The backup filename contains invalid characters. Valid characters are a-z 0-9 . - _."
     file_exists: "The file you are trying to upload already exists."
-    location:
-      local: "Local"
-      s3: "Amazon S3"
 
   invalid_params: "You supplied invalid parameters to the request: %{message}"
   not_logged_in: "You need to be logged in to do that."
@@ -284,7 +295,7 @@ en:
   invalid_whisper_access: "Either whispers are not enabled or you do not have access to create whisper posts"
   not_in_group:
     title_topic: "You need to request membership to the '%{group}' group to see this topic."
-    title_category: "You must be in a group to see this category."
+    title_category: "You need to request membership to the '%{group}' group to see this category."
     request_membership: "Request Membership"
     join_group: "Join Group"
   deleted_topic: "Oops! This topic has been deleted and is no longer available."
@@ -406,14 +417,14 @@ en:
   too_late_to_edit: "That post was created too long ago. It can no longer be edited or deleted."
   edit_conflict: "That post was edited by another user and your changes can no longer be saved."
   revert_version_same: "The current version is same as the version you are trying to revert to."
-  cannot_edit_on_slow_mode: "This topic is in slow mode. To encourage thoughtful, considered discussion, editing old posts is not currently allowed."
+  cannot_edit_on_slow_mode: "This topic is in slow mode. To encourage thoughtful, considered discussion, editing old posts in this topic is not currently allowed during slow mode."
 
   excerpt_image: "image"
 
   bookmarks:
     errors:
       already_bookmarked_post: "You cannot bookmark the same post twice."
-      too_many: "Sorry, you have too many bookmarks, visit %{user_bookmarks_url} to remove some."
+      too_many: "Sorry, you cannot add more than %{limit} bookmarks, visit <a href='%{user_bookmarks_url}'>%{user_bookmarks_url}</a> to remove some."
       cannot_set_past_reminder: "You cannot set a bookmark reminder in the past."
       cannot_set_reminder_in_distant_future: "You cannot set a bookmark reminder more than 10 years in the future."
       time_must_be_provided: "time must be provided for all reminders"
@@ -567,6 +578,7 @@ en:
               cant_send_pm: "Sorry, you cannot send a personal message to that user."
               no_user_selected: "You must select a valid user."
               reply_by_email_disabled: "Reply by email has been disabled."
+              send_to_email_disabled: "Sorry, you cannot send personal messages to email."
               target_user_not_found: "One of the users you are sending this message to could not be found."
               unable_to_update: "There was an error updating that topic."
               unable_to_tag: "There was an error tagging the topic."
@@ -626,6 +638,8 @@ en:
           attributes:
             word:
               too_many: "Too many words for that action"
+            base:
+              invalid_url: "Replacement URL is invalid"
 
   uncategorized_category_name: "Uncategorized"
 
@@ -706,16 +720,8 @@ en:
       topic_exists_no_oldest: "Can't delete this category because topic count is %{count}."
     uncategorized_description: "Topics that don't need a category, or don't fit into any other existing category."
   trust_levels:
-    newuser:
-      title: "new user"
-    basic:
-      title: "basic user"
-    member:
-      title: "member"
-    regular:
-      title: "regular"
-    leader:
-      title: "leader"
+    admin: "Admin"
+    staff: "Staff"
     change_failed_explanation: "You attempted to demote %{user_name} to '%{new_trust_level}'. However their trust level is already '%{current_trust_level}'. %{user_name} will remain at '%{current_trust_level}' - if you wish to demote user lock trust level first"
 
   post:
@@ -729,20 +735,20 @@ en:
     slow_down: "You’ve performed this action too many times, please try again later."
     too_many_requests: "You’ve performed this action too many times. Please wait %{time_left} before trying again."
     by_type:
-      first_day_replies_per_day: "You’ve reached the maximum number of replies a new user can create on their first day. Please wait %{time_left} before trying again."
-      first_day_topics_per_day: "You’ve reached the maximum number of topics a new user can create on their first day. Please wait %{time_left} before trying again."
-      create_topic: "You’re creating topics too quickly. Please wait %{time_left} before trying again."
-      create_post: "You’re replying too quickly. Please wait %{time_left} before trying again."
-      delete_post: "You’re deleting posts too quickly. Please wait %{time_left} before trying again."
-      public_group_membership: "You’re joining/leaving groups too frequently. Please wait %{time_left} before trying again."
-      topics_per_day: "You’ve reached the maximum number of new topics. Please wait %{time_left} before trying again."
-      pms_per_day: "You’ve reached the maximum number of messages. Please wait %{time_left} before trying again."
-      create_like: "You’ve reached the maximum number of likes. Please wait %{time_left} before trying again."
-      create_bookmark: "You’ve reached the maximum number of bookmarks. Please wait %{time_left} before trying again."
-      edit_post: "You’ve reached the maximum number of edits. Please wait %{time_left} before trying again."
+      first_day_replies_per_day: "We appreciate your enthusiasm, keep it up! That said, for the safety of our community, you’ve reached the maximum number of replies a new user can create on their first day. Please wait %{time_left} and you’ll be able to create more replies."
+      first_day_topics_per_day: "We appreciate your enthusiasm! That said, for the safety of our community, you’ve reached the maximum number of topics a new user can create on their first day. Please wait %{time_left} and you’ll be able to create more new topics."
+      create_topic: "You’re creating topics a bit too quickly. Please wait %{time_left} before trying again."
+      create_post: "You’re replying a bit too quickly. Please wait %{time_left} before trying again."
+      delete_post: "You’re deleting posts a bit too quickly. Please wait %{time_left} before trying again."
+      public_group_membership: "You’re joining/leaving groups a bit too frequently. Please wait %{time_left} before trying again."
+      topics_per_day: "You’ve reached the maximum new topics allowed per day. You can create more new topics in %{time_left}."
+      pms_per_day: "You’ve reached the maximum messages allowed per day. You can create more new messages in %{time_left}."
+      create_like: "Wow! You’ve been sharing a lot of love! You’ve reached the maximum daily likes for today, but as you gain trust levels, you’ll earn more daily likes. You’ll be able to like posts again in %{time_left}."
+      create_bookmark: "You’ve reached the maximum number of daily bookmarks. You can create more bookmarks in %{time_left}."
+      edit_post: "You’ve reached the maximum number of daily edits. You can submit more edits in %{time_left}."
       live_post_counts: "You’re asking for live post counts too quickly. Please wait %{time_left} before trying again."
       unsubscribe_via_email: "You’ve reached the maximum number of unsubscribes via email. Please wait %{time_left} before trying again."
-      topic_invitations_per_day: "You’ve reached the maximum number of topic invitations. Please wait %{time_left} before trying again."
+      topic_invitations_per_day: "You’ve reached the maximum number of topic invitations. You can send more invitations in %{time_left}."
 
     hours:
       one: "%{count} hour"
@@ -852,7 +858,7 @@ en:
       unknown: "unknown browser"
     device:
       android: "Android Device"
-      chromebook: "Chromebook"
+      chromebook: "Chrome OS"
       ipad: "iPad"
       iphone: "iPhone"
       ipod: "iPod"
@@ -863,7 +869,7 @@ en:
       unknown: "unknown device"
     os:
       android: "Android"
-      chromeos: "ChromeOS"
+      chromeos: "Chrome OS"
       ios: "iOS"
       linux: "Linux"
       macos: "macOS"
@@ -879,6 +885,7 @@ en:
     error_staged: "There was an error changing your email address. The address is already in use by a staged user."
     already_done: "Sorry, this confirmation link is no longer valid. Perhaps your email was already changed?"
     confirm: "Confirm"
+    max_secondary_emails_error: "You have reached the maximum allowed secondary emails limit."
 
     authorizing_new:
       title: "Confirm your new email"
@@ -977,6 +984,18 @@ en:
     no_drafts:
       self: "You have no drafts; begin composing a reply in any topic and it will be auto-saved as a new draft."
 
+  email_settings:
+    pop3_authentication_error: "There was an issue with the POP3 credentials provided, check the username and password and try again."
+    imap_authentication_error: "There was an issue with the IMAP credentials provided, check the username and password and try again."
+    imap_no_response_error: "An error occurred when communicating with the IMAP server. %{message}"
+    smtp_authentication_error: "There was an issue with the SMTP credentials provided, check the username and password and try again."
+    authentication_error_gmail_app_password: 'Application-specific password required. Learn more at <a target="_blank" href="https://support.google.com/accounts/answer/185833">this Google Help article</a>'
+    smtp_server_busy_error: "The SMTP server is currently busy, try again later."
+    smtp_unhandled_error: "There was an unhandled error when communicating with the SMTP server. %{message}"
+    imap_unhandled_error: "There was an unhandled error when communicating with the IMAP server. %{message}"
+    connection_error: "There was an issue connecting with the server, check the server name and port and try again."
+    timeout_error: "Connection to the server timed out, check the server name and port and try again."
+    unhandled_error: "Unhandled error when testing email settings. %{message}"
   webauthn:
     validation:
       invalid_type_error: "The webauthn type provided was invalid. Valid types are webauthn.get and webauthn.create."
@@ -1440,7 +1459,7 @@ en:
     force_https_warning: "Your website is using SSL. But `<a href='%{base_path}/admin/site_settings/category/all_results?filter=force_https'>force_https</a>` is not yet enabled in your site settings."
     out_of_date_themes: "Updates are available for the following themes:"
     unreachable_themes: "We were unable to check for updates on the following themes:"
-    watched_word_regexp_error: "The regular expression for %{action} watched words is invalid. Please check your <a href='%{base_path}/admin/logs/watched_words'>Watched Word settings</a>, or disable the 'watched words regular expressions' site setting."
+    watched_word_regexp_error: "The regular expression for '%{action}' watched words is invalid. Please check your <a href='%{base_path}/admin/customize/watched_words'>Watched Word settings</a>, or disable the 'watched words regular expressions' site setting."
 
   site_settings:
     display_local_time_in_user_card: "Display the local time based on a user's timezone when their user card is opened."
@@ -1473,14 +1492,14 @@ en:
     category_search_priority_high_weight: "Weight applied to ranking for high category search priority."
     allow_uncategorized_topics: "Allow topics to be created without a category. WARNING: If there are any uncategorized topics, you must recategorize them before turning this off."
     allow_duplicate_topic_titles: "Allow topics with identical, duplicate titles."
-    allow_duplicate_topic_titles_category: "Allow topics with identical, duplicate titles if the category is different. allow_duplicate_topic_titles must be false."
+    allow_duplicate_topic_titles_category: "Allow topics with identical, duplicate titles if the category is different. allow_duplicate_topic_titles must be disabled."
     unique_posts_mins: "How many minutes before a user can make a post with the same content again"
     educate_until_posts: "When the user starts typing their first (n) new posts, show the pop-up new user education panel in the composer."
     title: "The name of this site, as used in the title tag."
     site_description: "Describe this site in one sentence, as used in the meta description tag."
     short_site_description: "Short description, as used in the title tag on homepage."
-    contact_email: "Email address of key contact responsible for this site. Used for critical notifications, as well as on the <a href='%{base_path}/about' target='_blank'>/about</a> contact form for urgent matters."
-    contact_url: "Contact URL for this site. Used on the <a href='%{base_path}/about' target='_blank'>/about</a> contact form for urgent matters."
+    contact_email: "Email address of key contact responsible for this site. Used for critical notifications, and also displayed on <a href='%{base_path}/about' target='_blank'>/about</a> for urgent matters."
+    contact_url: "Contact URL for this site. Displayed on the <a href='%{base_path}/about' target='_blank'>/about</a> page for urgent matters."
     crawl_images: "Retrieve images from remote URLs to insert the correct width and height dimensions."
     download_remote_images_to_local: "Convert remote images to local images by downloading them; this prevents broken images."
     download_remote_images_threshold: "Minimum disk space necessary to download remote images locally (in percent)"
@@ -1563,6 +1582,10 @@ en:
     tl2_additional_likes_per_day_multiplier: "Increase limit of likes per day for tl2 (member) by multiplying with this number"
     tl3_additional_likes_per_day_multiplier: "Increase limit of likes per day for tl3 (regular) by multiplying with this number"
     tl4_additional_likes_per_day_multiplier: "Increase limit of likes per day for tl4 (leader) by multiplying with this number"
+    tl2_additional_edits_per_day_multiplier: "Increase limit of edits per day for tl2 (member) by multiplying with this number"
+    tl3_additional_edits_per_day_multiplier: "Increase limit of edits per day for tl3 (regular) by multiplying with this number"
+    tl4_additional_edits_per_day_multiplier: "Increase limit of edits per day for tl4 (leader) by multiplying with this number"
+
     num_users_to_silence_new_user: "If a new user's posts get num_spam_flags_to_silence_new_user spam flags from this many different users, hide all their posts and prevent future posting. 0 to disable."
     num_tl3_flags_to_silence_new_user: "If a new user's posts get this many flags from num_tl3_users_to_silence_new_user different trust level 3 users, hide all their posts and prevent future posting. 0 to disable."
     num_tl3_users_to_silence_new_user: "If a new user's posts get num_tl3_flags_to_silence_new_user flags from this many different trust level 3 users, hide all their posts and prevent future posting. 0 to disable."
@@ -1578,7 +1601,8 @@ en:
     must_approve_users: "Staff must approve all new user accounts before they are allowed to access the site."
     invite_code: "User must type this code to be allowed account registration, ignored when empty (case-insensitive)"
     approve_suspect_users: "Add suspicious users to the review queue. Suspicious users have entered a bio/website but have no reading activity."
-    pending_users_reminder_delay: "Notify moderators if new users have been waiting for approval for longer than this many hours. Set to -1 to disable notifications."
+    review_every_post: "All posts must be reviewed. WARNING! NOT RECOMMENDED FOR BUSY SITES."
+    pending_users_reminder_delay_minutes: "Notify moderators if new users have been waiting for approval for longer than this many minutes. Set to -1 to disable notifications."
     persistent_sessions: "Users will remain logged in when the web browser is closed"
     maximum_session_age: "User will remain logged in for n hours since last visit"
     ga_version: "Version of Google Universal Analytics to use: v3 (analytics.js), v4 (gtag)"
@@ -1588,6 +1612,7 @@ en:
     gtm_container_id: "Google Tag Manager container id. eg: GTM-ABCDEF. <br/>Note: Third-party scripts loaded by GTM may need to be allowlisted in 'content security policy script src'."
     enable_escaped_fragments: "Fall back to Google's Ajax-Crawling API if no webcrawler is detected. See <a href='https://developers.google.com/webmasters/ajax-crawling/docs/learn-more' target='_blank'>https://developers.google.com/webmasters/ajax-crawling/docs/learn-more</a>"
     moderators_manage_categories_and_groups: "Allow moderators to manage categories and groups"
+    moderators_change_post_ownership: "Allow moderators to change post ownership"
     cors_origins: "Allowed origins for cross-origin requests (CORS). Each origin must include http:// or https://. The DISCOURSE_ENABLE_CORS env variable must be set to true to enable CORS."
     use_admin_ip_allowlist: "Admins can only log in if they are at an IP address defined in the Screened IPs list (Admin > Logs > Screened Ips)."
     blocked_ip_blocks: "A list of private IP blocks that should never be crawled by Discourse"
@@ -1601,6 +1626,7 @@ en:
     content_security_policy: "Enable Content-Security-Policy"
     content_security_policy_report_only: "Enable Content-Security-Policy-Report-Only"
     content_security_policy_collect_reports: "Enable CSP violation report collection at /csp_reports"
+    content_security_policy_frame_ancestors: "Restrict who can embed this site in iframes via CSP. Control allowed hosts on <a href='%{base_path}/admin/customize/embedding'>Embedding</a>"
     content_security_policy_script_src: "Additional allowlisted script sources. The current host and CDN are included by default. See <a href='https://meta.discourse.org/t/mitigate-xss-attacks-with-content-security-policy/104243' target='_blank'>Mitigate XSS Attacks with Content Security Policy.</a>"
     invalidate_inactive_admin_email_after_days: "Admin accounts that have not visited the site in this number of days will need to re-validate their email address before logging in. Set to 0 to disable."
     top_menu: "Determine which items appear in the homepage navigation, and in what order. Example latest|new|unread|categories|top|read|posted|bookmarks"
@@ -1608,7 +1634,7 @@ en:
     post_menu_hidden_items: "The menu items to hide by default in the post menu unless an expansion ellipsis is clicked on."
     share_links: "Determine which items appear on the share dialog, and in what order."
     site_contact_username: "A valid staff username to send all automated messages from. If left blank the default System account will be used."
-    site_contact_group_name: "A valid group name to be invited to all automated messages."
+    site_contact_group_name: "A valid name of a group that gets invited to all automatically sent private messages."
     send_welcome_message: "Send all new users a welcome message with a quick start guide."
     send_tl1_welcome_message: "Send new trust level 1 users a welcome message."
     send_tl2_promotion_message: "Send new trust level 2 users a message about promotion."
@@ -1620,7 +1646,7 @@ en:
     topics_per_period_in_top_summary: "Number of top topics shown in the default top topics summary."
     topics_per_period_in_top_page: "Number of top topics shown on the expanded 'Show More' top topics."
     redirect_users_to_top_page: "Automatically redirect new and long absent users to the top page."
-    top_page_default_timeframe: "Default timeframe for the top view page."
+    top_page_default_timeframe: "Default timeframe for the top page."
     moderators_view_emails: "Allow moderators to view user emails"
     prioritize_username_in_ux: "Show username first on user page, user card and posts (when disabled name is shown first)"
     enable_rich_text_paste: "Enable automatic HTML to Markdown conversion when pasting text into the composer. (Experimental)"
@@ -1629,6 +1655,7 @@ en:
     email_token_valid_hours: "Forgot password / activate account tokens are valid for (n) hours."
 
     enable_badges: "Enable the badge system"
+    max_favorite_badges: "Maximum number of badges that user can select"
     enable_whispers: "Allow staff private communication within topics."
 
     allow_index_in_robots_txt: "Specify in robots.txt that this site is allowed to be indexed by web search engines. In exceptional cases you can permanently <a href='%{base_path}/admin/customize/robots'>override robots.txt</a>."
@@ -1672,11 +1699,11 @@ en:
     auth_overrides_email: "Overrides local email with external site email on every login, and prevent local changes. Applies to all authentication providers. (WARNING: discrepancies can occur due to normalization of local emails)"
     auth_overrides_username: "Overrides local username with external site username on every login, and prevent local changes.  Applies to all authentication providers. (WARNING: discrepancies can occur due to differences in username length/requirements)"
     auth_overrides_name: "Overrides local full name with external site full name on every login, and prevent local changes.  Applies to all authentication providers."
-    discourse_connect_overrides_avatar: "Overrides user avatar with external site avatar from DiscourseConnect payload. If enabled, users will not be allowed to upload avatars on Discourse."
-    discourse_connect_overrides_location: "Overrides user location with external location from DiscourseConnect payload and prevent local changes."
-    discourse_connect_overrides_website: "Overrides user website with external location from DiscourseConnect payload and prevent local changes."
-    discourse_connect_overrides_profile_background: "Overrides user profile background with external site avatar from DiscourseConnect payload."
-    discourse_connect_overrides_card_background: "Overrides user card background with external site avatar from DiscourseConnect payload."
+    discourse_connect_overrides_avatar: "Overrides user avatar with value from DiscourseConnect payload. If enabled, users will not be allowed to upload avatars on Discourse."
+    discourse_connect_overrides_location: "Overrides user location with value from DiscourseConnect payload and prevent local changes."
+    discourse_connect_overrides_website: "Overrides user website with value from DiscourseConnect payload and prevent local changes."
+    discourse_connect_overrides_profile_background: "Overrides user profile background with value from DiscourseConnect payload."
+    discourse_connect_overrides_card_background: "Overrides user card background with value from DiscourseConnect payload."
     discourse_connect_not_approved_url: "Redirect unapproved DiscourseConnect accounts to this URL"
     discourse_connect_allows_all_return_paths: "Do not restrict the domain for return_paths provided by DiscourseConnect (by default return path must be on current site)"
 
@@ -1709,7 +1736,7 @@ en:
     discord_trusted_guilds: 'Only allow members of these Discord guilds to log in via Discord. Use the numeric ID for the guild. For more information, check the instructions <a href="https://meta.discourse.org/t/configuring-discord-login-for-discourse/127129">here</a>. Leave blank to allow any guild.'
 
     enable_backups: "Allow administrators to create backups of the forum"
-    allow_restore: "Allow restore, which can replace ALL site data! Leave false unless you plan to restore a backup"
+    allow_restore: "Allow restore, which can replace ALL site data! Leave disabled unless you plan to restore a backup"
     maximum_backups: "The maximum amount of backups to keep on disk. Older backups are automatically deleted"
     automatic_backups_enabled: "Run automatic backups as defined in backup frequency"
     backup_frequency: "The number of days between backups."
@@ -1799,6 +1826,12 @@ en:
 
     strip_image_metadata: "Strip image metadata."
 
+    composer_media_optimization_image_enabled: "Enables client-side media optimization of uploaded image files."
+    composer_media_optimization_image_bytes_optimization_threshold: "Minimum image file size to trigger client-side optimization"
+    composer_media_optimization_image_resize_dimensions_threshold: "Minimum image width to trigger client-side resize"
+    composer_media_optimization_image_resize_width_target: "Images with widths larger than `composer_media_optimization_image_dimensions_resize_threshold` will be resized to this width. Must be >= than `composer_media_optimization_image_dimensions_resize_threshold`."
+    composer_media_optimization_image_encode_quality: "JPEG encode quality used in the re-encode process."
+
     min_ratio_to_crop: "Ratio used to crop tall images. Enter the result of width / height."
 
     simultaneous_uploads: "Maximum number of files that can be dragged & dropped in the composer"
@@ -1844,6 +1877,7 @@ en:
     min_trust_to_allow_self_wiki: "The minimum trust level required to make user's own post wiki."
 
     min_trust_to_send_messages: "The minimum trust level required to create new personal messages."
+    min_trust_to_send_email_messages: "The minimum trust level required to send personal messages via email."
     min_trust_to_flag_posts: "The minimum trust level required to flag posts"
     min_trust_to_post_links: "The minimum trust level required to include links in posts"
     min_trust_to_post_embedded_media: "The minimum trust level required to embed media items in a post"
@@ -1941,12 +1975,14 @@ en:
     min_first_post_typing_time: "Minimum amount of time in milliseconds a user must type during first post, if threshold is not met post will automatically enter the needs approval queue. Set to 0 to disable (not recommended)"
     auto_silence_fast_typers_on_first_post: "Automatically silence users that do not meet min_first_post_typing_time"
     auto_silence_fast_typers_max_trust_level: "Maximum trust level to auto silence fast typers"
-    auto_silence_first_post_regex: "Case insensitive regex that if passed will cause first post by user to be silenced and sent to approval queue. Example: raging|a[bc]a , will cause all posts containing raging or aba or aca to be silenced on first. Only applies to first post."
+    auto_silence_first_post_regex: "Case insensitive regex that if passed will cause first post by user to be silenced and sent to approval queue. Example: raging|a[bc]a , will cause all posts containing raging or aba or aca to be silenced on first. Only applies to first post. DEPRECATED: Use Silence Watched Words instead."
     reviewable_claiming: "Does reviewable content need to be claimed before it can be acted upon?"
     reviewable_default_topics: "Show reviewable content grouped by topic by default"
     reviewable_default_visibility: "Don't show reviewable items unless they meet this priority"
+    reviewable_low_priority_threshold: "The priority filter hides reviewable items that don't meet this score unless the '(any)' filter is used."
     high_trust_flaggers_auto_hide_posts: "New user posts are automatically hidden after being flagged as spam by a TL3+ user"
     cooldown_hours_until_reflag: "How much time users will have to wait until they are able to reflag a post"
+    slow_mode_prevents_editing: "Does 'Slow Mode' prevent editing, after editing_grace_period?"
 
     reply_by_email_enabled: "Enable replying to topics via email."
     reply_by_email_address: "Template for reply by email incoming email address, for example: %%{reply_key}@reply.example.com or replies+%%{reply_key}@example.com"
@@ -1983,8 +2019,9 @@ en:
 
     forwarded_emails_behaviour: "How to treat a forwarded email to Discourse"
     always_show_trimmed_content: "Always show trimmed part of incoming emails. WARNING: might reveal email addresses."
+    trim_incoming_emails: "Trim part of the incoming emails that isn't relevant."
     private_email: "Don't include content from posts or topics in email title or email body. NOTE: also disables digest emails."
-    email_total_attachment_size_limit_kb: "Max total size of files attached to outgoing emails. Set to 0 to disable sending of attachments."
+    email_total_attachment_size_limit_kb: "Max total size of files attached to outgoing emails in kB. Set to 0 to disable sending of attachments."
     post_excerpts_in_emails: "In notification emails, always send excerpts instead of full posts"
     raw_email_max_length: "How many characters should be stored for incoming email."
     raw_rejected_email_max_length: "How many characters should be stored for rejected incoming email."
@@ -2014,7 +2051,7 @@ en:
     imap_polling_period_mins: "The period in minutes between checking the IMAP accounts for emails."
     imap_polling_old_emails: "The maximum number of old emails (processed) to be updated every time an IMAP box is polled (0 for all)."
     imap_polling_new_emails: "The maximum number of new emails (unprocessed) to be updated every time an IMAP box is polled ."
-    imap_batch_import_email: "The minimum number of new emails that trigger import mode (disables post alerts)."
+    imap_batch_import_email: "The minimum number of new emails that trigger import mode (disables notifications for imported posts)."
 
     email_prefix: "The [label] used in the subject of emails. It will default to 'title' if not set."
     email_site_title: "The title of the site used as the sender of emails from the site. Default to 'title' if not set. If your 'title' contains characters that are not allowed in email sender strings, use this setting."
@@ -2124,6 +2161,7 @@ en:
     share_anonymized_statistics: "Share anonymized usage statistics."
 
     auto_handle_queued_age: "Automatically handle records that are waiting to be reviewed after this many days. Flags will be ignored. Queued posts and users will be rejected. Set to 0 to disable this feature."
+    penalty_step_hours: "Default penalties for silencing or suspending users in hours. First offense defaults to the first value, second offense defaults to the second value, etc."
     svg_icon_subset: "Add additional FontAwesome 5 icons that you would like to include in your assets. Use prefix 'fa-' for solid icons, 'far-' for regular icons and 'fab-' for brand icons."
     max_prints_per_hour_per_user: "Maximum number of /print page impressions (set to 0 to disable)"
 
@@ -2152,6 +2190,7 @@ en:
     show_create_topics_notice: "If the site has fewer than 5 public topics, show a notice asking admins to create some topics."
 
     delete_drafts_older_than_n_days: "Delete drafts older than (n) days."
+    delete_merged_stub_topics_after_days: "Number of days to wait before automatically deleting fully merged stub topics. Set to 0 to never delete stub topics."
 
     bootstrap_mode_min_users: "Minimum number of users required to disable bootstrap mode (set to 0 to disable)"
 
@@ -2287,6 +2326,8 @@ en:
 
     create_revision_on_bulk_topic_moves: "Create revision for first posts when topics are moved into a new category in bulk."
 
+    allow_changing_staged_user_tracking: "Allow a staged user's category and tag notification preferences to be changed by an admin user."
+
     errors:
       invalid_email: "Invalid email address."
       invalid_username: "There's no user with that username."
@@ -2359,9 +2400,9 @@ en:
     blank_id_error: "The `external_id` is required but was blank"
     email_error: "An account could not be registered with the email address <b>%{email}</b>. Please contact the site's administrator."
     missing_secret: "Authentication failed due to missing secret. Contact the site administrators to fix this problem."
+    invite_redeem_failed: "Invite redemption failed. Please contact the site's administrator."
 
   original_poster: "Original Poster"
-  most_posts: "Most Posts"
   most_recent_poster: "Most Recent Poster"
   frequent_poster: "Frequent Poster"
   # Example: "Original Poster, Most Recent Poster"
@@ -2378,6 +2419,7 @@ en:
     errors:
       different_topics: "Posts belonging to different topics cannot be merged."
       different_users: "Posts belonging to different users cannot be merged."
+      max_post_length: "Posts cannot be merged because the combined post length is more than allowed."
 
   move_posts:
     new_topic_moderator_post:
@@ -2529,6 +2571,7 @@ en:
       other: "Automatically deactivated after %{count} days of inactivity"
     activated_by_staff: "Activated by staff"
     new_user_typed_too_fast: "New user typed too fast"
+    content_matches_auto_silence_regex: "Content matches auto silence regex"
     content_matches_auto_block_regex: "Content matches auto block regex"
     username:
       short: "must be at least %{min} characters"
@@ -2563,6 +2606,9 @@ en:
     email_in_spam_header: "User's first email was flagged as spam"
     already_silenced: "User was already silenced by %{staff} %{time_ago}."
     already_suspended: "User was already suspended by %{staff} %{time_ago}."
+    cannot_delete_has_posts:
+      one: "User %{username} has %{count} post in a public topic or personal message, so they can't be deleted."
+      other: "User %{username} has %{count} posts in public topics or personal messages, so they can't be deleted."
 
   reviewables_reminder:
     submitted:
@@ -2820,7 +2866,7 @@ en:
         The community flagged this post and now it is hidden. **Because this post has been hidden more than once, your post will now remain hidden until it is handled by a staff member.**
 
         For additional guidance, please refer to our [community guidelines](%{base_url}/guidelines).
-    
+
     queued_by_staff:
       title: "Post Needs Approval"
       subject_template: "Post hidden by staff, awaiting approval"
@@ -2828,7 +2874,7 @@ en:
         Hello,
 
         This is an automated message from %{site_name} to let you know that your post was hidden.
-        
+
         <%{base_url}%{url}>
 
         Your post will remain hidden until a staff member reviews it.
@@ -3430,6 +3476,7 @@ en:
     only_reply_by_email_pm: "Reply to this email to respond to %{participants}."
     visit_link_to_respond: "[Visit Topic](%{base_url}%{url}) to respond."
     visit_link_to_respond_pm: "[Visit Message](%{base_url}%{url}) to respond to %{participants}."
+    reply_above_line: "## Please type your reply above this line. ##"
 
     posted_by: "Posted by %{username} on %{post_date}"
 
@@ -3915,8 +3962,17 @@ en:
 
         If this was not you, please [review your existing sessions](%{base_url}/my/preferences/account) and consider changing your password.
 
+    post_approved:
+      title: "Your post was approved"
+      subject_template: "[%{site_name}] Your post was approved"
+      text_body_template: |
+        Hello,
+
+        This is an automated message from %{site_name} to let you know that [your post](%{base_url}%{post_url}) was approved.
   page_forbidden:
     title: "Oops! That page is private."
+
+  site_setting_missing: "`%{name}` site setting has to be set."
 
   page_not_found:
     title: "Oops! That page doesn’t exist or is private."
@@ -3991,6 +4047,9 @@ en:
     sender_post_deleted: "post has been deleted"
     sender_message_to_invalid: "recipient has invalid email address"
     sender_topic_deleted: "topic has been deleted"
+    group_smtp_post_deleted: "post has been deleted"
+    group_smtp_topic_deleted: "topic has been deleted"
+    group_smtp_disabled_for_group: "smtp has been disabled for the group"
 
   color_schemes:
     base_theme_name: "Base"
@@ -4035,30 +4094,30 @@ en:
 
       Please treat this discussion forum with the same respect you would a public park. We, too, are a shared community resource &mdash; a place to share skills, knowledge and interests through ongoing conversation.
 
-      These are not hard and fast rules, merely guidelines to aid the human judgment of our community and keep this a clean and well-lighted place for civilized public discourse.
+      These are not hard and fast rules. They are guidelines to aid the human judgment of our community and keep this a kind, friendly place for civilized public discourse.
 
       <a name="improve"></a>
 
       ## [Improve the Discussion](#improve)
 
-      Help us make this a great place for discussion by always working to improve the discussion in some way, however small. If you are not sure your post adds to the conversation, think over what you want to say and try again later.
-
-      The topics discussed here matter to us, and we want you to act as if they matter to you, too. Be respectful of the topics and the people discussing them, even if you disagree with some of what is being said.
+      Help us make this a great place for discussion by always adding something positive to the discussion, however small. If you are not sure your post adds to the conversation, think over what you want to say and try again later.
 
       One way to improve the discussion is by discovering ones that are already happening. Spend time browsing the topics here before replying or starting your own, and you’ll have a better chance of meeting others who share your interests.
+
+      The topics discussed here matter to us, and we want you to act as if they matter to you, too. Be respectful of the topics and the people discussing them, even if you disagree with some of what is being said.
 
       <a name="agreeable"></a>
 
       ## [Be Agreeable, Even When You Disagree](#agreeable)
 
-      You may wish to respond to something by disagreeing with it. That’s fine. But remember to _criticize ideas, not people_. Please avoid:
+      You may wish to respond by disagreeing. That’s fine. But remember to _criticize ideas, not people_. Please avoid:
 
       * Name-calling
       * Ad hominem attacks
       * Responding to a post’s tone instead of its actual content
       * Knee-jerk contradiction
 
-      Instead, provide reasoned counter-arguments that improve the conversation.
+      Instead, provide thoughtful insights that improve the conversation.
 
       <a name="participate"></a>
 
@@ -4066,7 +4125,7 @@ en:
 
       The conversations we have here set the tone for every new arrival. Help us influence the future of this community by choosing to engage in discussions that make this forum an interesting place to be &mdash; and avoiding those that do not.
 
-      Discourse provides tools that enable the community to collectively identify the best (and worst) contributions: bookmarks, likes, flags, replies, edits, and so forth. Use these tools to improve your own experience, and everyone else’s, too.
+      Discourse provides tools that enable the community to collectively identify the best (and worst) contributions: bookmarks, likes, flags, replies, edits, watching, muting and so forth. Use these tools to improve your own experience, and everyone else’s, too.
 
       Let’s leave our community better than we found it.
 
@@ -4076,7 +4135,7 @@ en:
 
       Moderators have special authority; they are responsible for this forum. But so are you. With your help, moderators can be community facilitators, not just janitors or police.
 
-      When you see bad behavior, don’t reply. It encourages the bad behavior by acknowledging it, consumes your energy, and wastes everyone’s time. _Just flag it_. If enough flags accrue, action will be taken, either automatically or by moderator intervention.
+      When you see bad behavior, don’t reply. Replying encourages bad behavior by acknowledging it, consumes your energy, and wastes everyone’s time. _Just flag it_. If enough flags accrue, action will be taken, either automatically or by moderator intervention.
 
       In order to maintain our community, moderators reserve the right to remove any content and any user account for any reason at any time. Moderators do not preview new posts; the moderators and site operators take no responsibility for any content posted by the community.
 
@@ -4091,7 +4150,7 @@ en:
       * Respect each other. Don’t harass or grief anyone, impersonate people, or expose their private information.
       * Respect our forum. Don’t post spam or otherwise vandalize the forum.
 
-      These are not concrete terms with precise definitions &mdash; avoid even the _appearance_ of any of these things. If you’re unsure, ask yourself how you would feel if your post was featured on the front page of the New York Times.
+      These are not concrete terms with precise definitions &mdash; avoid even the _appearance_ of any of these things. If you’re unsure, ask yourself how you would feel if your post was featured on the front page of a major news site.
 
       This is a public forum, and search engines index these discussions. Keep the language, links, and images safe for family and friends.
 
@@ -4101,7 +4160,7 @@ en:
 
       Make the effort to put things in the right place, so that we can spend more time discussing and less cleaning up. So:
 
-      * Don’t start a topic in the wrong category.
+      * Don’t start a topic in the wrong category; please read the category definitions.
       * Don’t cross-post the same thing in multiple topics.
       * Don’t post no-content replies.
       * Don’t divert a topic by changing it midstream.
@@ -4119,7 +4178,7 @@ en:
 
       ## [Powered by You](#power)
 
-      This site is operated by your [friendly local staff](%{base_path}/about) and *you*, the community. If you have any further questions about how things should work here, open a new topic in the [site feedback category](%{base_path}/c/site-feedback) and let's discuss! If there's a critical or urgent issue that can't be handled by a meta topic or flag, contact us via the [staff page](%{base_path}/about).
+      This site is operated by your [friendly local staff](%{base_path}/about) and *you*, the community. If you have any further questions about how things should work here, open a new topic in the [site feedback category](%{base_path}/c/site-feedback) and let’s discuss! If there’s a critical or urgent issue that can’t be handled by a meta topic or flag, contact us via the [staff page](%{base_path}/about).
 
       <a name="tos"></a>
 
@@ -4391,7 +4450,9 @@ en:
     mass_award:
       errors:
         invalid_csv: We encountered an error on line %{line_number}. Please confirm the CSV has one email per line.
+        too_many_csv_entries: Too many entries in the CSV file. Please provide a CSV file with no more than %{count} entries.
         badge_disabled: Please enable the %{badge_name} badge first.
+        cant_grant_multiple_times: Can't grant the %{badge_name} badge multiple times to a single user.
     editor:
       name: Editor
       description: First post edit
@@ -4665,8 +4726,8 @@ en:
       synonym: 'Synonyms are not allowed. Use "%{tag_name}" instead.'
       has_synonyms: '"%{tag_name}" cannot be used because it has synonyms.'
     required_tags_from_group:
-      one: "You must include at least %{count} %{tag_group_name} tag."
-      other: "You must include at least %{count} %{tag_group_name} tags."
+      one: "You must include at least %{count} %{tag_group_name} tag. The tags in this group are: %{tags}."
+      other: "You must include at least %{count} %{tag_group_name} tags. The tags in this group are: %{tags}."
     invalid_target_tag: "cannot be a synonym of a synonym"
     synonyms_exist: "is not allowed while synonyms exist"
   rss_by_tag: "Topics tagged %{tag}"
@@ -4894,6 +4955,7 @@ en:
 
   reviewables:
     already_handled: "Thanks, but we've already reviewed that post and determined it does not need to be flagged again."
+    already_handled_and_user_not_exist: "Thanks, but someone already reviewed and that user no longer exists."
     priorities:
       low: "Low"
       medium: "Medium"
@@ -4913,7 +4975,7 @@ en:
       new_topics_unless_trust_level: "Users at low trust levels must have topics approved by staff. See `approve_new_topics_unless_trust_level`."
       fast_typer: "New user typed their first post suspiciously fast, suspected bot or spammer behavior. See `min_first_post_typing_time`."
       auto_silence_regexp: "New user whose first post matches the `auto_silence_first_post_regex` setting."
-      watched_word: "This post included a Watched Word. See your <a href='%{base_url}/admin/logs/watched_words'>list of watched words</a>."
+      watched_word: "This post included a Watched Word. See your <a href='%{base_url}/admin/customize/watched_words'>list of watched words</a>."
       staged: "New topics and posts for staged users must be approved by staff. See `approve_unless_staged`."
       category: "Posts in this category require manual approval by staff. See the category settings."
       must_approve_users: "All new users must be approved by staff. See `must_approve_users`."
@@ -4945,10 +5007,6 @@ en:
       agree_and_hide:
         title: "Hide Post"
         description: "Hide this post and automatically send the user a message urging them to edit it."
-      delete_spammer:
-        title: "Delete Spammer"
-        description: "Remove the user and all their posts and topics."
-        confirm: "Are you sure you want to delete all that user's posts, topics, and block their IP and email addresses?"
       delete_single:
         title: "Delete"
       delete:
@@ -4993,9 +5051,18 @@ en:
           description: "The user will be deleted, and we'll block their IP and email address."
       reject:
         title: "Reject"
+        bundle_title: "Reject..."
+      reject_and_suspend:
+        title: "Reject and Suspend user"
+      reject_and_silence:
+        title: "Reject and Silence user"
+      reject_and_delete:
+        title: "Reject and Delete the post"
+      reject_and_keep_deleted:
+        title: "Keep post deleted"
+      approve_and_restore:
+        title: "Approve and Restore post"
       delete_user:
-        title: "Delete User"
-        confirm: "Are you sure you want to delete that user? This will remove all of their posts and block their email and IP address."
         reason: "Deleted via review queue"
 
   email_style:

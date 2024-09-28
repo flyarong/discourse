@@ -5,7 +5,9 @@ import { ajax } from "discourse/lib/ajax";
 const WatchedWord = EmberObject.extend({
   save() {
     return ajax(
-      "/admin/logs/watched_words" + (this.id ? "/" + this.id : "") + ".json",
+      "/admin/customize/watched_words" +
+        (this.id ? "/" + this.id : "") +
+        ".json",
       {
         type: this.id ? "PUT" : "POST",
         data: {
@@ -19,7 +21,7 @@ const WatchedWord = EmberObject.extend({
   },
 
   destroy() {
-    return ajax("/admin/logs/watched_words/" + this.id + ".json", {
+    return ajax("/admin/customize/watched_words/" + this.id + ".json", {
       type: "DELETE",
     });
   },
@@ -27,29 +29,23 @@ const WatchedWord = EmberObject.extend({
 
 WatchedWord.reopenClass({
   findAll() {
-    return ajax("/admin/logs/watched_words.json").then((list) => {
+    return ajax("/admin/customize/watched_words.json").then((list) => {
       const actions = {};
-      list.words.forEach((s) => {
-        if (!actions[s.action]) {
-          actions[s.action] = [];
-        }
-        actions[s.action].pushObject(WatchedWord.create(s));
+
+      list.actions.forEach((action) => {
+        actions[action] = [];
       });
 
-      list.actions.forEach((a) => {
-        if (!actions[a]) {
-          actions[a] = [];
-        }
+      list.words.forEach((watchedWord) => {
+        actions[watchedWord.action].pushObject(WatchedWord.create(watchedWord));
       });
 
-      return Object.keys(actions).map((n) => {
+      return Object.keys(actions).map((nameKey) => {
         return EmberObject.create({
-          nameKey: n,
-          name: I18n.t("admin.watched_words.actions." + n),
-          words: actions[n],
-          count: actions[n].length,
-          regularExpressions: list.regular_expressions,
-          compiledRegularExpression: list.compiled_regular_expressions[n],
+          nameKey,
+          name: I18n.t("admin.watched_words.actions." + nameKey),
+          words: actions[nameKey],
+          compiledRegularExpression: list.compiled_regular_expressions[nameKey],
         });
       });
     });

@@ -4,20 +4,12 @@ desc "Runs the qunit test suite"
 
 task "qunit:test", [:timeout, :qunit_path] do |_, args|
   require "socket"
-  require 'rbconfig'
+  require "chrome_installed_checker"
 
-  if RbConfig::CONFIG['host_os'][/darwin|mac os/]
-    google_chrome_cli = "/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
-  else
-    google_chrome_cli = "google-chrome"
-  end
-
-  unless system("command -v \"#{google_chrome_cli}\" >/dev/null")
-    abort "Chrome is not installed. Download from https://www.google.com/chrome/browser/desktop/index.html"
-  end
-
-  if Gem::Version.new(`\"#{google_chrome_cli}\" --version`.match(/[\d\.]+/)[0]) < Gem::Version.new("59")
-    abort "Chrome 59 or higher is required to run tests in headless mode."
+  begin
+    ChromeInstalledChecker.run
+  rescue ChromeNotInstalled, ChromeVersionTooLow => err
+    abort err.message
   end
 
   unless system("command -v yarn >/dev/null;")
@@ -45,13 +37,18 @@ task "qunit:test", [:timeout, :qunit_path] do |_, args|
 
   pid = Process.spawn(
     {
-      "RAILS_ENV" => "test",
+      "RAILS_ENV" => ENV["QUNIT_RAILS_ENV"] || "test",
       "SKIP_ENFORCE_HOSTNAME" => "1",
       "UNICORN_PID_PATH" => "#{Rails.root}/tmp/pids/unicorn_test_#{port}.pid", # So this can run alongside development
       "UNICORN_PORT" => port.to_s,
-      "UNICORN_SIDEKIQS" => "0"
+      "UNICORN_SIDEKIQS" => "0",
+      "DISCOURSE_SKIP_CSS_WATCHER" => "1",
+      "UNICORN_LISTENER" => "127.0.0.1:#{port}",
+      "LOGSTASH_UNICORN_URI" => nil,
+      "UNICORN_WORKERS" => "3"
     },
-    "#{Rails.root}/bin/unicorn -c config/unicorn.conf.rb"
+    "#{Rails.root}/bin/unicorn -c config/unicorn.conf.rb",
+    pgroup: true
   )
 
   begin
@@ -61,7 +58,7 @@ task "qunit:test", [:timeout, :qunit_path] do |_, args|
     cmd = "node #{test_path}/run-qunit.js http://localhost:#{port}#{qunit_path}"
     options = { seed: (ENV["QUNIT_SEED"] || Random.new.seed), hidepassed: 1 }
 
-    %w{module filter qunit_skip_core qunit_single_plugin}.each do |arg|
+    %w{module filter qunit_skip_core qunit_single_plugin theme_name theme_url theme_id}.each do |arg|
       options[arg] = ENV[arg.upcase] if ENV[arg.upcase].present?
     end
 
@@ -95,20 +92,10 @@ task "qunit:test", [:timeout, :qunit_path] do |_, args|
     puts "Rails server is warmed up"
 
     sh(cmd)
-
-    # A bit of a hack until we can figure this out on Travis
-    tries = 0
-    while tries < 3 && $?.exitstatus == 124
-      tries += 1
-      puts "\nTimed Out. Trying again...\n"
-      sh(cmd)
-    end
-
     success &&= $?.success?
-
   ensure
     # was having issues with HUP
-    Process.kill "KILL", pid
+    Process.kill "-KILL", pid
     FileUtils.rm("#{Rails.root}/tmp/pids/unicorn_test_#{port}.pid")
   end
 

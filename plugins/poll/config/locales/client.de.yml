@@ -24,7 +24,7 @@ de:
         closed:
           title: "Ergebnisse werden angezeigt, sobald die Abstimmung <strong>beendet</strong> ist."
         staff:
-          title: "Ergebnisse werden nur <strong>Teammitgliedern</strong> angezeigt."
+          title: "Ergebnisse werden nur <strong>Team-Mitgliedern</strong> angezeigt."
       multiple:
         help:
           at_least_min_options:
@@ -47,7 +47,7 @@ de:
         title: "Zurück zur Umfrage"
         label: "Umfrage anzeigen"
       group-results:
-        title: "Stimmen anhand von Benutzerdaten gruppieren"
+        title: "Stimmen anhand von Benutzerfeld gruppieren"
         label: "Aufschlüsselung anzeigen"
       export-results:
         title: "Ergebnisse der Umfrage exportieren"
@@ -70,14 +70,17 @@ de:
         percentage: "Prozentsatz"
         count: "Anzahl"
       error_while_toggling_status: "Leider ist beim Umschalten des Status dieser Umfrage ein Fehler aufgetreten."
-      error_while_casting_votes: "Leider ist beim Abgeben deiner Stimme ein Fehler aufgetreten."
+      error_while_casting_votes: "Leider ist beim Abgeben deiner Stimmen ein Fehler aufgetreten."
       error_while_fetching_voters: "Leider ist beim Anzeigen der Teilnehmer ein Fehler aufgetreten."
       error_while_exporting_results: "Leider ist beim Exportieren der Umfrageergebnisse ein Fehler aufgetreten."
       ui_builder:
         title: Umfrage erstellen
         insert: Umfrage einfügen
         help:
-          options_count: Geben Sie mindestens 1 Option ein
+          options_min_count: Gib mindestens eine Option ein.
+          options_max_count: Gib maximal %{count} Optionen ein.
+          invalid_min_value: Der Mindestwert muss mindestens 1 betragen.
+          invalid_max_value: Der Maximalwert muss mindestens 1 betragen, aber kleiner oder gleich der Anzahl der Optionen sein.
           invalid_values: Der Mindestwert muss kleiner als der Höchstwert sein.
           min_step_value: Die minimale Schrittweite beträgt 1.
         poll_type:
@@ -86,26 +89,29 @@ de:
           multiple: Mehrfachauswahl
           number: Bewertung
         poll_result:
-          label: Ergebnisse
+          label: Ergebnisse anzeigen …
           always: Immer sichtbar
-          vote: Nach Stimmabgabe
-          closed: Nach Ende der Abstimmung
-          staff: Nur Teammitglieder
+          vote: Nur nach Stimmabgabe
+          closed: Wenn die Umfrage geschlossen ist
+          staff: Nur Team-Mitglieder
         poll_groups:
-          label: Zulässige Gruppen
+          label: Abstimmung auf diese Gruppen beschränken
         poll_chart_type:
-          label: Diagrammtyp
+          label: Ergebnisübersicht
           bar: Balken
           pie: Torte
         poll_config:
-          max: Höchstwert
-          min: Minimalwert
+          max: Max. Auswahl
+          min: Min. Auswahl
           step: Schrittweite
         poll_public:
           label: Anzeigen, wer abgestimmt hat
         poll_title:
           label: Titel (optional)
         poll_options:
-          label: Bitte gib eine Umfrageoption pro Zeile ein
+          label: Optionen (eine pro Zeile)
+          add: Option hinzufügen
         automatic_close:
           label: Umfrage automatisch beenden
+        show_advanced: "Erweiterte Optionen anzeigen"
+        hide_advanced: "Erweiterte Optionen ausblenden"

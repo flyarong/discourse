@@ -20,6 +20,7 @@ import { postTransformCallbacks } from "discourse/widgets/post-stream";
 import { prioritizeNameInUx } from "discourse/lib/settings";
 import { relativeAgeMediumSpan } from "discourse/lib/formatter";
 import { transformBasicPost } from "discourse/lib/transform-post";
+import autoGroupFlairForUser from "discourse/lib/avatar-flair";
 
 function transformWithCallbacks(post) {
   let transformed = transformBasicPost(post);
@@ -56,6 +57,7 @@ export function avatarImg(wanted, attrs) {
       height: size,
       src: getURLWithCDN(url),
       title,
+      "aria-label": title,
     },
     className,
   };
@@ -185,8 +187,13 @@ createWidget("post-avatar", {
 
     const result = [body];
 
-    if (attrs.primary_group_flair_url || attrs.primary_group_flair_bg_color) {
+    if (attrs.flair_url || attrs.flair_bg_color) {
       result.push(this.attach("avatar-flair", attrs));
+    } else {
+      const autoFlairAttrs = autoGroupFlairForUser(this.site, attrs);
+      if (autoFlairAttrs) {
+        result.push(this.attach("avatar-flair", autoFlairAttrs));
+      }
     }
 
     result.push(h("div.poster-avatar-extra"));
@@ -240,6 +247,13 @@ function showReplyTab(attrs, siteSettings) {
 
 createWidget("post-meta-data", {
   tagName: "div.topic-meta-data",
+
+  buildAttributes() {
+    return {
+      role: "heading",
+      "aria-level": "2",
+    };
+  },
 
   settings: {
     displayPosterName: true,
@@ -486,7 +500,7 @@ createWidget("post-contents", {
         this.state.repliesBelow = posts.map((p) => {
           let result = transformWithCallbacks(p);
           result.shareUrl = `${topicUrl}/${p.post_number}`;
-          result.asPost = this.store.createRecord("post", p);
+          result.asPost = this.store.createRecord("post", result);
           return result;
         });
       });
@@ -590,6 +604,10 @@ createWidget("post-article", {
 
   buildAttributes(attrs) {
     return {
+      "aria-label": I18n.t("share.post", {
+        postNumber: attrs.post_number,
+      }),
+      role: "region",
       "data-post-id": attrs.id,
       "data-topic-id": attrs.topicId,
       "data-user-id": attrs.user_id,
@@ -683,8 +701,18 @@ createWidget("post-article", {
         .then((posts) => {
           this.state.repliesAbove = posts.map((p) => {
             let result = transformWithCallbacks(p);
-            result.shareUrl = `${topicUrl}/${p.post_number}`;
-            result.asPost = this.store.createRecord("post", p);
+
+            // We don't want to overwrite CPs - we are doing something a bit weird
+            // here by creating a post object from a transformed post. They aren't
+            // 100% the same.
+            delete result.new_user;
+            delete result.deleted;
+            delete result.shareUrl;
+            delete result.firstPost;
+            delete result.usernameUrl;
+
+            result.customShare = `${topicUrl}/${p.post_number}`;
+            result.asPost = this.store.createRecord("post", result);
             return result;
           });
         });
@@ -718,7 +746,7 @@ export default createWidget("post", {
     }
     const classNames = ["topic-post", "clearfix"];
 
-    if (attrs.id === -1 || attrs.isSaving) {
+    if (attrs.id === -1 || attrs.isSaving || attrs.staged) {
       classNames.push("staged");
     }
     if (attrs.selected) {

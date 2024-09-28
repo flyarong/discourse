@@ -38,7 +38,7 @@ export function navigateToTopic(topic, href) {
 export default Component.extend({
   tagName: "tr",
   classNameBindings: [":topic-list-item", "unboundClassNames", "topic.visited"],
-  attributeBindings: ["data-topic-id"],
+  attributeBindings: ["data-topic-id", "role", "ariaLevel:aria-level"],
   "data-topic-id": alias("topic.id"),
 
   didReceiveAttrs() {
@@ -142,8 +142,8 @@ export default Component.extend({
       classes.push("unseen-topic");
     }
 
-    if (topic.get("displayNewPosts")) {
-      classes.push("new-posts");
+    if (topic.unread_posts) {
+      classes.push("unread-posts");
     }
 
     ["liked", "archived", "bookmarked", "pinned", "closed"].forEach((name) => {

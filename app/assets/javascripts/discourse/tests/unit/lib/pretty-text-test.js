@@ -670,7 +670,7 @@ eviltrout</p>
 
     assert.cooked(
       "# #category-hashtag",
-      '<h1><span class="hashtag">#category-hashtag</span></h1>',
+      '<h1><a name="category-hashtag-1" class="anchor" href="#category-hashtag-1"></a><span class="hashtag">#category-hashtag</span></h1>',
       "it works within ATX-style headers"
     );
 
@@ -696,7 +696,7 @@ eviltrout</p>
   test("Heading", function (assert) {
     assert.cooked(
       "**Bold**\n----------",
-      "<h2><strong>Bold</strong></h2>",
+      '<h2><a name="bold-1" class="anchor" href="#bold-1"></a><strong>Bold</strong></h2>',
       "It will bold the heading"
     );
   });
@@ -939,7 +939,7 @@ eviltrout</p>
 
     assert.cooked(
       "## a\nb\n```\nc\n```",
-      '<h2>a</h2>\n<p>b</p>\n<pre><code class="lang-auto">c\n</code></pre>',
+      '<h2><a name="a-1" class="anchor" href="#a-1"></a>a</h2>\n<p>b</p>\n<pre><code class="lang-auto">c\n</code></pre>',
       "it handles headings with code blocks after them."
     );
   });
@@ -1600,5 +1600,111 @@ var bar = 'bar';
     assert.cookedOptions("-->asd", enabledTypographer, "<p>–&gt;asd</p>");
     assert.cookedOptions(" -->asd ", enabledTypographer, "<p>–&gt;asd</p>");
     assert.cookedOptions(" -->asd", enabledTypographer, "<p>–&gt;asd</p>");
+  });
+
+  test("default typographic replacements", function (assert) {
+    const enabledTypographer = {
+      siteSettings: { enable_markdown_typographer: true },
+    };
+
+    assert.cookedOptions("(bad)", enabledTypographer, "<p>(bad)</p>");
+    assert.cookedOptions("+-5", enabledTypographer, "<p>±5</p>");
+    assert.cookedOptions(
+      "test.. test... test..... test?..... test!....",
+      enabledTypographer,
+      "<p>test… test… test… test?.. test!..</p>"
+    );
+    assert.cookedOptions(
+      "!!!!!! ???? ,,",
+      enabledTypographer,
+      "<p>!!! ??? ,</p>"
+    );
+    assert.cookedOptions(
+      "!!!!!! ???? ,,",
+      enabledTypographer,
+      "<p>!!! ??? ,</p>"
+    );
+    assert.cookedOptions("(tm) (TM)", enabledTypographer, "<p>™ ™</p>");
+    assert.cookedOptions("(pa) (PA)", enabledTypographer, "<p>¶ ¶</p>");
+  });
+
+  test("default typographic replacements - dashes", function (assert) {
+    const enabledTypographer = {
+      siteSettings: { enable_markdown_typographer: true },
+    };
+
+    assert.cookedOptions(
+      "---markdownit --- super---",
+      enabledTypographer,
+      "<p>—markdownit — super—</p>"
+    );
+    assert.cookedOptions(
+      "markdownit---awesome",
+      enabledTypographer,
+      "<p>markdownit—awesome</p>"
+    );
+    assert.cookedOptions("abc ----", enabledTypographer, "<p>abc ----</p>");
+    assert.cookedOptions(
+      "--markdownit -- super--",
+      enabledTypographer,
+      "<p>–markdownit – super–</p>"
+    );
+    assert.cookedOptions(
+      "markdownit--awesome",
+      enabledTypographer,
+      "<p>markdownit–awesome</p>"
+    );
+    assert.cookedOptions("1---2---3", enabledTypographer, "<p>1—2—3</p>");
+    assert.cookedOptions("1--2--3", enabledTypographer, "<p>1–2–3</p>");
+    assert.cookedOptions(
+      "<p>1 – – 3</p>",
+      enabledTypographer,
+      "<p>1 – – 3</p>"
+    );
+  });
+
+  test("disabled typographic replacements", function (assert) {
+    const enabledTypographer = {
+      siteSettings: { enable_markdown_typographer: true },
+    };
+
+    assert.cookedOptions("(c) (C)", enabledTypographer, "<p>(c) (C)</p>");
+    assert.cookedOptions("(r) (R)", enabledTypographer, "<p>(r) (R)</p>");
+    assert.cookedOptions("(p) (P)", enabledTypographer, "<p>(p) (P)</p>");
+  });
+
+  test("watched words replace", function (assert) {
+    const opts = {
+      watchedWordsReplace: { "(?:\\W|^)(fun)(?=\\W|$)": "times" },
+    };
+
+    assert.cookedOptions("test fun funny", opts, "<p>test times funny</p>");
+  });
+
+  test("watched words link", function (assert) {
+    const opts = {
+      watchedWordsLink: { "(?:\\W|^)(fun)(?=\\W|$)": "https://discourse.org" },
+    };
+
+    assert.cookedOptions(
+      "test fun funny",
+      opts,
+      '<p>test <a href="https://discourse.org">fun</a> funny</p>'
+    );
+  });
+
+  test("watched words replace with bad regex", function (assert) {
+    const maxMatches = 100; // same limit as MD watched-words-replace plugin
+    const opts = {
+      siteSettings: { watched_words_regular_expressions: true },
+      watchedWordsReplace: { "(\\bu?\\b)": "you" },
+    };
+
+    assert.cookedOptions(
+      "one",
+      opts,
+      `<p>${"you".repeat(maxMatches)}one</p>`,
+      "does not loop infinitely"
+    );
   });
 });

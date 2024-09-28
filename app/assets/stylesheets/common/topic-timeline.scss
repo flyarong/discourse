@@ -6,19 +6,23 @@
   box-sizing: border-box;
   z-index: z("timeline");
   -webkit-transform: translate3d(0, 0, 0);
-
+  transition: margin-bottom 0.25s ease-in;
   &.timeline-docked-bottom {
+    @media screen and (prefers-reduced-motion: no-preference) {
+      margin-bottom: -1.75em; // animate out footer button height
+    }
     .timeline-footer-controls {
       opacity: 0;
       pointer-events: none;
       cursor: default;
-      height: 0px;
     }
   }
 
   &.timeline-fullscreen.show {
     max-height: 700px;
-    transition: max-height 0.4s ease-out;
+    @media (prefers-reduced-motion: no-preference) {
+      transition: max-height 0.4s ease-out;
+    }
 
     @media screen and (max-height: 425px) {
       max-height: 75vh;
@@ -35,8 +39,14 @@
   }
 
   &.timeline-fullscreen {
+    transform: translateY(var(--offset));
+    @media (prefers-reduced-motion: no-preference) {
+      &.animate {
+        transition: transform 0.1s linear;
+      }
+      transition: max-height 0.3s ease-in;
+    }
     max-height: 0;
-    transition: max-height 0.3s ease-in;
     position: fixed;
     margin-left: 0;
     background-color: var(--secondary);
@@ -113,6 +123,7 @@
         .btn-group {
           margin-bottom: 0;
           margin-right: 15px;
+          vertical-align: top;
         }
 
         .widget-component-connector {

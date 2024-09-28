@@ -6,13 +6,13 @@ class SiteSerializer < ApplicationSerializer
     :default_archetype,
     :notification_types,
     :post_types,
+    :trust_levels,
     :groups,
     :filters,
     :periods,
     :top_menu_items,
     :anonymous_top_menu_items,
     :uncategorized_category_id, # this is hidden so putting it here
-    :disabled_plugins,
     :user_field_max_length,
     :post_action_types,
     :topic_flag_types,
@@ -29,11 +29,11 @@ class SiteSerializer < ApplicationSerializer
     :censored_regexp,
     :shared_drafts_category_id,
     :custom_emoji_translation,
-    :watched_words_replace
+    :watched_words_replace,
+    :watched_words_link,
+    :categories
   )
 
-  has_many :categories, serializer: SiteCategorySerializer, embed: :objects
-  has_many :trust_levels, embed: :objects
   has_many :archetypes, embed: :objects, serializer: ArchetypeSerializer
   has_many :user_fields, embed: :objects, serializer: UserFieldSerializer
   has_many :auth_providers, embed: :objects, serializer: AuthProviderSerializer
@@ -51,7 +51,7 @@ class SiteSerializer < ApplicationSerializer
 
   def user_color_schemes
     cache_fragment("user_color_schemes") do
-      schemes = ColorScheme.where('user_selectable').order(:name)
+      schemes = ColorScheme.includes(:color_scheme_colors).where('user_selectable').order(:name)
       ActiveModel::ArraySerializer.new(schemes, each_serializer: ColorSchemeSelectableSerializer).as_json
     end
   end
@@ -62,7 +62,17 @@ class SiteSerializer < ApplicationSerializer
 
   def groups
     cache_anon_fragment("group_names") do
-      object.groups.order(:name).pluck(:id, :name).map { |id, name| { id: id, name: name } }.as_json
+      object.groups.order(:name)
+        .select(:id, :name, :flair_icon, :flair_upload_id, :flair_bg_color, :flair_color)
+        .map do |g|
+          {
+            id: g.id,
+            name: g.name,
+            flair_url: g.flair_url,
+            flair_bg_color: g.flair_bg_color,
+            flair_color: g.flair_color,
+          }
+        end.as_json
     end
   end
 
@@ -106,10 +116,6 @@ class SiteSerializer < ApplicationSerializer
 
   def uncategorized_category_id
     SiteSetting.uncategorized_category_id
-  end
-
-  def disabled_plugins
-    Discourse.disabled_plugin_names
   end
 
   def user_field_max_length
@@ -173,11 +179,19 @@ class SiteSerializer < ApplicationSerializer
   end
 
   def include_shared_drafts_category_id?
-    scope.can_see_shared_draft?
+    scope.can_see_shared_draft? && SiteSetting.shared_drafts_enabled?
   end
 
   def watched_words_replace
-    WordWatcher.get_cached_words(:replace)
+    WordWatcher.word_matcher_regexps(:replace)
+  end
+
+  def watched_words_link
+    WordWatcher.word_matcher_regexps(:link)
+  end
+
+  def categories
+    object.categories.map { |c| c.to_h }
   end
 
   private

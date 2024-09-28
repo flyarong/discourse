@@ -241,6 +241,13 @@ describe PostDestroyer do
           expect(UserAction.where(target_topic_id: post.topic_id, action_type: UserAction::NEW_TOPIC).count).to eq(1)
           expect(UserAction.where(target_topic_id: post.topic_id, action_type: UserAction::REPLY).count).to eq(1)
         end
+
+        it "runs the SyncTopicUserBookmarked for the topic that the post is in so topic_users.bookmarked is correct" do
+          PostDestroyer.new(@user, @reply).destroy
+          expect_enqueued_with(job: :sync_topic_user_bookmarked, args: { topic_id: @reply.topic_id  }) do
+            PostDestroyer.new(@user, @reply.reload).recover
+          end
+        end
       end
 
       context "recovered by admin" do
@@ -381,7 +388,7 @@ describe PostDestroyer do
         expect(post2.deleted_at).to be_blank
         expect(post2.deleted_by).to be_blank
         expect(post2.user_deleted).to eq(true)
-        expect(post2.raw).to eq(I18n.t('js.topic.deleted_by_author', count: 24))
+        expect(post2.raw).to eq(I18n.t('js.topic.deleted_by_author_simple'))
         expect(post2.version).to eq(2)
         expect(called).to eq(1)
         expect(user_stat.reload.post_count).to eq(0)
@@ -462,7 +469,13 @@ describe PostDestroyer do
       expect(post.deleted_at).to eq(nil)
       expect(post.user_deleted).to eq(true)
 
-      expect(post.raw).to eq(I18n.t('js.post.deleted_by_author', count: 1))
+      expect(post.raw).to eq(I18n.t('js.post.deleted_by_author_simple'))
+    end
+
+    it "runs the SyncTopicUserBookmarked for the topic that the post is in so topic_users.bookmarked is correct" do
+      post2 = create_post
+      PostDestroyer.new(post2.user, post2).destroy
+      expect_job_enqueued(job: :sync_topic_user_bookmarked, args: { topic_id: post2.topic_id })
     end
 
     context "as a moderator" do
@@ -638,10 +651,6 @@ describe PostDestroyer do
 
       it "sets the second user's last_read_post_number back to 1" do
         expect(topic_user.last_read_post_number).to eq(1)
-      end
-
-      it "sets the second user's last_read_post_number back to 1" do
-        expect(topic_user.highest_seen_post_number).to eq(1)
       end
     end
   end
@@ -938,6 +947,43 @@ describe PostDestroyer do
     end
   end
 
+  describe 'internal links' do
+    fab!(:topic)  { Fabricate(:topic) }
+    let!(:second_post) { Fabricate(:post, topic: topic) }
+    fab!(:other_topic)  { Fabricate(:topic) }
+    let!(:other_post) { Fabricate(:post, topic: other_topic) }
+    fab!(:user) { Fabricate(:user) }
+    let!(:base_url) { URI.parse(Discourse.base_url) }
+    let!(:guardian) { Guardian.new }
+    let!(:url) { "http://#{base_url.host}/t/#{other_topic.slug}/#{other_topic.id}/#{other_post.post_number}" }
+
+    it 'should destroy internal links when user deletes own post' do
+      new_post = Post.create!(user: user, topic: topic, raw: "Link to other topic:\n\n#{url}\n")
+      TopicLink.extract_from(new_post)
+
+      link_counts = TopicLink.counts_for(guardian, other_topic.reload, [other_post])
+      expect(link_counts.count).to eq(1)
+
+      PostDestroyer.new(user, new_post).destroy
+
+      updated_link_counts = TopicLink.counts_for(guardian, other_topic.reload, [other_post])
+      expect(updated_link_counts.count).to eq(0)
+    end
+
+    it 'should destroy internal links when moderator deletes post' do
+      new_post = Post.create!(user: user, topic: topic, raw: "Link to other topic:\n\n#{url}\n")
+      TopicLink.extract_from(new_post)
+      link_counts = TopicLink.counts_for(guardian, other_topic.reload, [other_post])
+      expect(link_counts.count).to eq(1)
+
+      PostDestroyer.new(moderator, new_post).destroy
+      TopicLink.extract_from(new_post)
+      updated_link_counts = TopicLink.counts_for(guardian, other_topic, [other_post])
+
+      expect(updated_link_counts.count).to eq(0)
+    end
+  end
+
   describe '#delete_with_replies' do
     let(:reporter) { Discourse.system_user }
     fab!(:post) { Fabricate(:post) }
@@ -978,6 +1024,9 @@ describe PostDestroyer do
     fab!(:private_post) { Fabricate(:private_message_post, topic: private_message_topic) }
     fab!(:post_action) { Fabricate(:post_action, post: private_post) }
     fab!(:reply) { Fabricate(:private_message_post, topic: private_message_topic) }
+    fab!(:post_revision) { Fabricate(:post_revision, post: private_post) }
+    fab!(:upload1) { Fabricate(:upload_s3, created_at: 5.hours.ago) }
+    fab!(:post_upload) { PostUpload.create(post: private_post, upload: upload1) }
 
     it "destroys the post and topic if deleting first post" do
       PostDestroyer.new(reply.user, reply, permanent: true).destroy
@@ -988,6 +1037,13 @@ describe PostDestroyer do
       expect { private_post.reload }.to raise_error(ActiveRecord::RecordNotFound)
       expect { private_message_topic.reload }.to raise_error(ActiveRecord::RecordNotFound)
       expect { post_action.reload }.to raise_error(ActiveRecord::RecordNotFound)
+      expect { post_revision.reload }.to raise_error(ActiveRecord::RecordNotFound)
+      expect { post_upload.reload }.to raise_error(ActiveRecord::RecordNotFound)
+
+      Jobs::CleanUpUploads.new.reset_last_cleanup!
+      SiteSetting.clean_orphan_uploads_grace_period_hours = 1
+      Jobs::CleanUpUploads.new.execute({})
+      expect { upload1.reload }.to raise_error(ActiveRecord::RecordNotFound)
     end
 
     it 'soft delete if not creator of post or not private message' do
@@ -996,6 +1052,8 @@ describe PostDestroyer do
 
       PostDestroyer.new(post.user, post, permanent: true).destroy
       expect(post.user_deleted).to be true
+
+      expect(post_revision.reload.persisted?).to be true
     end
 
     it 'always destroy the post when the force_destroy option is passed' do

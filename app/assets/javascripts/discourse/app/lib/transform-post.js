@@ -21,9 +21,10 @@ export function transformBasicPost(post) {
     deletedByAvatarTemplate: null,
     deletedByUsername: null,
     primary_group_name: post.primary_group_name,
-    primary_group_flair_url: post.primary_group_flair_url,
-    primary_group_flair_bg_color: post.primary_group_flair_bg_color,
-    primary_group_flair_color: post.primary_group_flair_color,
+    flair_name: post.flair_name,
+    flair_url: post.flair_url,
+    flair_bg_color: post.flair_bg_color,
+    flair_color: post.flair_color,
     wiki: post.wiki,
     lastWikiEdit: post.last_wiki_edit,
     firstPost: post.post_number === 1,
@@ -81,6 +82,7 @@ export function transformBasicPost(post) {
     userCustomFields: post.user_custom_fields,
     readCount: post.readers_count,
     canPublishPage: false,
+    trustLevel: post.trust_level,
   };
 
   _additionalAttributes.forEach((a) => (postAtts[a] = post[a]));
@@ -147,6 +149,7 @@ export default function transformPost(
   postAtts.actionCodeWho = post.action_code_who;
   postAtts.topicUrl = topic.get("url");
   postAtts.isSaving = post.isSaving;
+  postAtts.staged = post.staged;
 
   if (post.notice) {
     postAtts.notice = post.notice;
@@ -171,6 +174,7 @@ export default function transformPost(
   }
 
   const showTopicMap =
+    _additionalAttributes.indexOf("topicMap") !== -1 ||
     showPMMap ||
     (post.post_number === 1 &&
       topic.archetype === "regular" &&

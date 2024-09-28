@@ -65,7 +65,7 @@ export function buildManageButtons(attrs, currentUser, siteSettings) {
     });
   }
 
-  if (attrs.canManage && attrs.hidden) {
+  if (currentUser.staff && attrs.hidden) {
     contents.push({
       icon: "far-eye",
       label: "post.controls.unhide",
@@ -74,7 +74,10 @@ export function buildManageButtons(attrs, currentUser, siteSettings) {
     });
   }
 
-  if (currentUser.admin) {
+  if (
+    currentUser.admin ||
+    (siteSettings.moderators_change_post_ownership && currentUser.staff)
+  ) {
     contents.push({
       icon: "user",
       label: "post.controls.change_owner",

@@ -10,10 +10,6 @@ describe 'rate limiter integration' do
     RateLimiter.clear_all!
   end
 
-  after do
-    RateLimiter.disable
-  end
-
   it "will rate limit message bus requests once queueing" do
     freeze_time
 
@@ -24,7 +20,7 @@ describe 'rate limiter integration' do
     }
 
     expect(response.status).to eq(429)
-    expect(response.headers['Retry-After']).to be > 29
+    expect(response.headers['Retry-After'].to_i).to be > 29
   end
 
   it "will not rate limit when all is good" do
@@ -53,12 +49,13 @@ describe 'rate limiter integration' do
 
   it 'can cleanly limit requests and sets a Retry-After header' do
     freeze_time
-    #request.set_header("action_dispatch.show_exceptions", true)
+
+    RateLimiter.clear_all!
 
     admin = Fabricate(:admin)
     api_key = Fabricate(:api_key, user: admin)
 
-    global_setting :max_admin_api_reqs_per_key_per_minute, 1
+    global_setting :max_admin_api_reqs_per_minute, 1
 
     get '/admin/api/keys.json', headers: {
       HTTP_API_KEY: api_key.key,
@@ -76,7 +73,7 @@ describe 'rate limiter integration' do
 
     data = response.parsed_body
 
-    expect(response.headers['Retry-After']).to eq(60)
+    expect(response.headers["Retry-After"]).to eq("60")
     expect(data["extras"]["wait_seconds"]).to eq(60)
   end
 end

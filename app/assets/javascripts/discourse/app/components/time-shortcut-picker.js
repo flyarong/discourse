@@ -16,18 +16,9 @@ import discourseComputed, {
 
 import Component from "@ember/component";
 import I18n from "I18n";
-import KeyboardShortcuts from "discourse/lib/keyboard-shortcuts";
 import { action } from "@ember/object";
 import { and, equal } from "@ember/object/computed";
 
-// global shortcuts that interfere with these modal shortcuts, they are rebound when the
-// component is destroyed
-//
-// c createTopic
-// r replyToPost
-// l toggle like
-// t replyAsNewTopic
-const GLOBAL_SHORTCUTS_TO_PAUSE = ["c", "r", "l", "t"];
 const BINDINGS = {
   "l t": {
     handler: "selectShortcut",
@@ -40,10 +31,6 @@ const BINDINGS = {
   "n d": {
     handler: "selectShortcut",
     args: [TIME_SHORTCUT_TYPES.TOMORROW],
-  },
-  "n w": {
-    handler: "selectShortcut",
-    args: [TIME_SHORTCUT_TYPES.NEXT_WEEK],
   },
   "n b w": {
     handler: "selectShortcut",
@@ -97,7 +84,6 @@ export default Component.extend({
     }
 
     this._bindKeyboardShortcuts();
-    this._loadLastUsedCustomDatetime();
   },
 
   @observes("prefilledDatetime")
@@ -113,10 +99,9 @@ export default Component.extend({
     }
   },
 
-  @on("willDestroyElement")
-  _resetKeyboardShortcuts() {
-    KeyboardShortcuts.unbind(BINDINGS);
-    KeyboardShortcuts.unpause(GLOBAL_SHORTCUTS_TO_PAUSE);
+  willDestroyElement() {
+    this._super(...arguments);
+    this.mousetrap.unbind(Object.keys(BINDINGS));
   },
 
   parsePrefilledDatetime() {
@@ -144,7 +129,7 @@ export default Component.extend({
     if (lastTime && lastDate) {
       let parsed = parseCustomDatetime(lastDate, lastTime, this.userTimezone);
 
-      if (parsed < now(this.userTimezone)) {
+      if (!parsed.isValid() || parsed < now(this.userTimezone)) {
         return;
       }
 
@@ -157,14 +142,11 @@ export default Component.extend({
   },
 
   _bindKeyboardShortcuts() {
-    KeyboardShortcuts.pause(GLOBAL_SHORTCUTS_TO_PAUSE);
     Object.keys(BINDINGS).forEach((shortcut) => {
-      KeyboardShortcuts.addShortcut(shortcut, () => {
+      this.mousetrap.bind(shortcut, () => {
         let binding = BINDINGS[shortcut];
-        if (binding.args) {
-          return this.send(binding.handler, ...binding.args);
-        }
-        this.send(binding.handler);
+        this.send(binding.handler, ...binding.args);
+        return false;
       });
     });
   },
@@ -188,6 +170,8 @@ export default Component.extend({
     "userTimezone"
   )
   options(additionalOptionsToShow, hiddenOptions, customOptions, userTimezone) {
+    this._loadLastUsedCustomDatetime();
+
     let options = defaultShortcutOptions(userTimezone);
 
     if (additionalOptionsToShow.length > 0) {
@@ -268,7 +252,7 @@ export default Component.extend({
         this.userTimezone
       );
 
-      if (customDatetime.isValid()) {
+      if (customDatetime.isValid() && this.customDate) {
         dateTime = customDatetime;
 
         localStorage.lastCustomTime = this.customTime;

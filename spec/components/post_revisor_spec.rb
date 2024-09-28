@@ -44,6 +44,22 @@ describe PostRevisor do
   end
 
   context 'editing category' do
+    it "triggers the :post_edited event with topic_changed?" do
+      category = Fabricate(:category)
+      category.set_permissions(everyone: :full)
+      category.save!
+      post = create_post
+      events = DiscourseEvent.track_events do
+        post.revise(post.user, category_id: category.id)
+      end
+
+      event = events.find { |e| e[:event_name] == :post_edited }
+
+      expect(event[:params].first).to eq(post)
+      expect(event[:params].second).to eq(true)
+      expect(event[:params].third).to be_kind_of(PostRevisor)
+      expect(event[:params].third.topic_diff).to eq({ "category_id" => [SiteSetting.uncategorized_category_id, category.id] })
+    end
 
     it 'does not revise category when no permission to create a topic in category' do
       category = Fabricate(:category)
@@ -162,10 +178,20 @@ describe PostRevisor do
         expect(post.errors.messages[:base].first).to be I18n.t("cannot_edit_on_slow_mode")
       end
 
-      it 'ninja editing is allowed' do
+      it 'grace period editing is allowed' do
         SiteSetting.editing_grace_period = 1.minute
 
         subject.revise!(post.user, { raw: 'updated body' }, revised_at: post.updated_at + 10.seconds)
+
+        post.reload
+
+        expect(post.errors).to be_empty
+      end
+
+      it 'edits are generally allowed' do
+        SiteSetting.slow_mode_prevents_editing = false
+
+        subject.revise!(post.user, { raw: 'updated body' }, revised_at: post.updated_at + 10.minutes)
 
         post.reload
 
@@ -182,7 +208,7 @@ describe PostRevisor do
       end
     end
 
-    describe 'ninja editing' do
+    describe 'grace period editing' do
       it 'correctly applies edits' do
         SiteSetting.editing_grace_period = 1.minute
 
@@ -469,9 +495,57 @@ describe PostRevisor do
     describe 'rate limiter' do
       fab!(:changed_by) { Fabricate(:coding_horror) }
 
+      before do
+        RateLimiter.enable
+        RateLimiter.clear_all!
+        SiteSetting.editing_grace_period = 0
+      end
+
       it "triggers a rate limiter" do
         EditRateLimiter.any_instance.expects(:performed!)
         subject.revise!(changed_by, raw: 'updated body')
+      end
+
+      it "raises error when a user gets rate limited" do
+        SiteSetting.max_edits_per_day = 1
+        user = Fabricate(:user, trust_level: 1)
+
+        subject.revise!(user, raw: 'body (edited)')
+
+        expect do
+          subject.revise!(user, raw: 'body (edited twice) ')
+        end.to raise_error(RateLimiter::LimitExceeded)
+      end
+
+      it "edit limits scale up depending on user's trust level" do
+        SiteSetting.max_edits_per_day = 1
+        SiteSetting.tl2_additional_edits_per_day_multiplier = 2
+        SiteSetting.tl3_additional_edits_per_day_multiplier = 3
+        SiteSetting.tl4_additional_edits_per_day_multiplier = 4
+
+        user = Fabricate(:user, trust_level: 2)
+        expect { subject.revise!(user, raw: 'body (edited)') }.to_not raise_error
+        expect { subject.revise!(user, raw: 'body (edited twice)') }.to_not raise_error
+        expect do
+          subject.revise!(user, raw: 'body (edited three times) ')
+        end.to raise_error(RateLimiter::LimitExceeded)
+
+        user = Fabricate(:user, trust_level: 3)
+        expect { subject.revise!(user, raw: 'body (edited)') }.to_not raise_error
+        expect { subject.revise!(user, raw: 'body (edited twice)') }.to_not raise_error
+        expect { subject.revise!(user, raw: 'body (edited three times)') }.to_not raise_error
+        expect do
+          subject.revise!(user, raw: 'body (edited four times) ')
+        end.to raise_error(RateLimiter::LimitExceeded)
+
+        user = Fabricate(:user, trust_level: 4)
+        expect { subject.revise!(user, raw: 'body (edited)') }.to_not raise_error
+        expect { subject.revise!(user, raw: 'body (edited twice)') }.to_not raise_error
+        expect { subject.revise!(user, raw: 'body (edited three times)') }.to_not raise_error
+        expect { subject.revise!(user, raw: 'body (edited four times)') }.to_not raise_error
+        expect do
+          subject.revise!(user, raw: 'body (edited five times) ')
+        end.to raise_error(RateLimiter::LimitExceeded)
       end
     end
 
@@ -534,7 +608,7 @@ describe PostRevisor do
 
       context 'second poster posts again quickly' do
 
-        it 'is a ninja edit, because the second poster posted again quickly' do
+        it 'is a grace period edit, because the second poster posted again quickly' do
           SiteSetting.editing_grace_period = 1.minute
           subject.revise!(changed_by, { raw: 'yet another updated body' }, revised_at: post.updated_at + 10.seconds)
           post.reload
@@ -855,6 +929,21 @@ describe PostRevisor do
             expect(post.topic.tags.map(&:name).sort).to eq(['important', 'stuff'])
           end
 
+          it "triggers the :post_edited event with topic_changed?" do
+            topic.tags = [Fabricate(:tag, name: "super"), Fabricate(:tag, name: "stuff")]
+
+            events = DiscourseEvent.track_events do
+              subject.revise!(user, raw: "lets totally update the body", tags: [])
+            end
+
+            event = events.find { |e| e[:event_name] == :post_edited }
+
+            expect(event[:params].first).to eq(post)
+            expect(event[:params].second).to eq(true)
+            expect(event[:params].third).to be_kind_of(PostRevisor)
+            expect(event[:params].third.topic_diff).to eq({ "tags" => [["super", "stuff"], []] })
+          end
+
           context "with staff-only tags" do
             before do
               create_staff_only_tags(['important'])
@@ -1036,6 +1125,65 @@ describe PostRevisor do
 
         expect(post.reload.post_uploads.pluck(:upload_id)).to contain_exactly(image2.id, image3.id, image4.id)
       end
+
+      context "secure media uploads" do
+        let!(:image5) { Fabricate(:secure_upload) }
+        before do
+          Jobs.run_immediately!
+          setup_s3
+          SiteSetting.authorized_extensions = "png|jpg|gif|mp4"
+          SiteSetting.secure_media = true
+          stub_upload(image5)
+        end
+
+        it "updates the upload secure status, which is secure by default from the composer. set to false for a public topic" do
+          subject.revise!(user, raw: <<~RAW)
+              This is a post with a secure upload
+              ![image5](#{image5.short_url})
+          RAW
+
+          expect(image5.reload.secure).to eq(false)
+          expect(image5.security_last_changed_reason).to eq("access control post dictates security | source: post revisor")
+        end
+
+        it "does not update the upload secure status, which is secure by default from the composer for a private" do
+          post.topic.update(category: Fabricate(:private_category,  group: Fabricate(:group)))
+          subject.revise!(user, raw: <<~RAW)
+              This is a post with a secure upload
+              ![image5](#{image5.short_url})
+          RAW
+
+          expect(image5.reload.secure).to eq(true)
+          expect(image5.security_last_changed_reason).to eq("access control post dictates security | source: post revisor")
+        end
+      end
+    end
+  end
+
+  context 'when the review_every_post setting is enabled' do
+    let(:post) { Fabricate(:post, post_args) }
+    let(:revisor) { PostRevisor.new(post) }
+
+    before { SiteSetting.review_every_post = true }
+
+    it 'queues the post when a regular user edits it' do
+      expect {
+        revisor.revise!(post.user, { raw: 'updated body' }, revised_at: post.updated_at + 10.minutes)
+      }.to change(ReviewablePost, :count).by(1)
+    end
+
+    it 'does nothing when a staff member edits a post' do
+      admin = Fabricate(:admin)
+
+      expect { revisor.revise!(admin, { raw: 'updated body' }) }.to change(ReviewablePost, :count).by(0)
+    end
+
+    it 'skips grace period edits' do
+      SiteSetting.editing_grace_period = 1.minute
+
+      expect {
+        revisor.revise!(post.user, { raw: 'updated body' }, revised_at: post.updated_at + 10.seconds)
+      }.to change(ReviewablePost, :count).by(0)
     end
   end
 end

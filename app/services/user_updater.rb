@@ -121,15 +121,25 @@ class UserUpdater
       user.primary_group_id = nil
     end
 
-    CATEGORY_IDS.each do |attribute, level|
-      if ids = attributes[attribute]
-        CategoryUser.batch_set(user, level, ids)
-      end
+    if attributes[:flair_group_id] &&
+      attributes[:flair_group_id] != user.flair_group_id &&
+      (attributes[:flair_group_id].blank? ||
+        guardian.can_use_primary_group?(user, attributes[:flair_group_id]))
+
+      user.flair_group_id = attributes[:flair_group_id]
     end
 
-    TAG_NAMES.each do |attribute, level|
-      if attributes.has_key?(attribute)
-        TagUser.batch_set(user, level, attributes[attribute]&.split(',') || [])
+    if @guardian.can_change_tracking_preferences?(user)
+      CATEGORY_IDS.each do |attribute, level|
+        if ids = attributes[attribute]
+          CategoryUser.batch_set(user, level, ids)
+        end
+      end
+
+      TAG_NAMES.each do |attribute, level|
+        if attributes.has_key?(attribute)
+          TagUser.batch_set(user, level, attributes[attribute]&.split(',') || [])
+        end
       end
     end
 

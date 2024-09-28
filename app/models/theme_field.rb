@@ -94,10 +94,32 @@ class ThemeField < ActiveRecord::Base
       node.remove
     end
 
-    doc.css('script[type="text/discourse-plugin"]').each do |node|
-      next unless node['version'].present?
+    doc.css('script[type="text/discourse-plugin"]').each_with_index do |node, index|
+      version = node['version']
+      next if version.blank?
+
+      initializer_name = "theme-field" +
+        "-#{self.id}" +
+        "-#{Theme.targets[self.target_id]}" +
+        "-#{ThemeField.types[self.type_id]}" +
+        "-script-#{index + 1}"
       begin
-        js_compiler.append_plugin_script(node.inner_html, node['version'])
+        js = <<~JS
+          import { withPluginApi } from "discourse/lib/plugin-api";
+
+          export default {
+            name: #{initializer_name.inspect},
+            after: "inject-objects",
+
+            initialize() {
+              withPluginApi(#{version.inspect}, (api) => {
+                #{node.inner_html}
+              });
+            }
+          };
+        JS
+
+        js_compiler.append_module(js, "discourse/initializers/#{initializer_name}", include_variables: true)
       rescue ThemeJavascriptCompiler::CompileError => ex
         errors << ex.message
       end
@@ -129,10 +151,11 @@ class ThemeField < ActiveRecord::Base
 
     js_compiler = ThemeJavascriptCompiler.new(theme_id, theme.name)
     filename, extension = name.split(".", 2)
+    filename = "test/#{filename}" if js_tests_field?
     begin
       case extension
       when "js.es6", "js"
-        js_compiler.append_module(content, filename)
+        js_compiler.append_module(content, filename, include_variables: true)
       when "hbs"
         js_compiler.append_ember_template(filename.sub("discourse/templates/", ""), content)
       when "hbr", "raw.hbs"
@@ -145,6 +168,29 @@ class ThemeField < ActiveRecord::Base
     end
 
     [js_compiler.content, errors&.join("\n")]
+  end
+
+  def validate_svg_sprite_xml
+    upload = Upload.find(self.upload_id) rescue nil
+
+    if Discourse.store.external?
+      external_copy = Discourse.store.download(upload) rescue nil
+      path = external_copy.try(:path)
+    else
+      path = Discourse.store.path_for(upload)
+    end
+
+    content = File.read(path)
+    error = nil
+
+    begin
+      svg_file = Nokogiri::XML(content) do |config|
+        config.options = Nokogiri::XML::ParseOptions::NOBLANKS
+      end
+    rescue => e
+      error = "Error with #{self.name}: #{e.inspect}"
+    end
+    error
   end
 
   def raw_translation_data(internal: false)
@@ -285,6 +331,10 @@ class ThemeField < ActiveRecord::Base
     Theme.targets[self.target_id] == :extra_js
   end
 
+  def js_tests_field?
+    Theme.targets[self.target_id] == :tests_js
+  end
+
   def basic_scss_field?
     ThemeField.basic_targets.include?(Theme.targets[self.target_id].to_s) &&
       ThemeField.scss_fields.include?(self.name)
@@ -315,7 +365,7 @@ class ThemeField < ActiveRecord::Base
       self.error = nil unless self.error.present?
       self.compiler_version = Theme.compiler_version
       DB.after_commit { CSP::Extension.clear_theme_extensions_cache! }
-    elsif extra_js_field?
+    elsif extra_js_field? || js_tests_field?
       self.value_baked, self.error = process_extra_js(self.value)
       self.error = nil unless self.error.present?
       self.compiler_version = Theme.compiler_version
@@ -331,7 +381,7 @@ class ThemeField < ActiveRecord::Base
       self.compiler_version = Theme.compiler_version
     elsif svg_sprite_field?
       DB.after_commit { SvgSprite.expire_cache }
-      self.error = nil
+      self.error = validate_svg_sprite_xml
       self.value_baked = "baked"
       self.compiler_version = Theme.compiler_version
     end
@@ -349,11 +399,13 @@ class ThemeField < ActiveRecord::Base
   def compile_scss(prepended_scss = nil)
     prepended_scss ||= Stylesheet::Importer.new({}).prepended_scss
 
-    Stylesheet::Compiler.compile("#{prepended_scss} #{self.theme.scss_variables.to_s} #{self.value}",
-      "#{Theme.targets[self.target_id]}.scss",
-      theme: self.theme,
-      load_paths: self.theme.scss_load_paths
-    )
+    self.theme.with_scss_load_paths do |load_paths|
+      Stylesheet::Compiler.compile("#{prepended_scss} #{self.theme.scss_variables.to_s} #{self.value}",
+        "#{Theme.targets[self.target_id]}.scss",
+        theme: self.theme,
+        load_paths: load_paths
+      )
+    end
   end
 
   def compiled_css(prepended_scss)
@@ -422,7 +474,7 @@ class ThemeField < ActiveRecord::Base
       hash = {}
       OPTIONS.each do |option|
         plural = :"#{option}s"
-        hash[option] = @allowed_values[plural][0] if @allowed_values[plural] && @allowed_values[plural].length == 1
+        hash[option] = @allowed_values[plural][0] if @allowed_values[plural]&.length == 1
         hash[option] = match[option] if hash[option].nil?
       end
       hash
@@ -457,6 +509,9 @@ class ThemeField < ActiveRecord::Base
     ThemeFileMatcher.new(regex: /^javascripts\/(?<name>.+)$/,
                          targets: :extra_js, names: nil, types: :js,
                          canonical: -> (h) { "javascripts/#{h[:name]}" }),
+    ThemeFileMatcher.new(regex: /^test\/(?<name>.+)$/,
+                         targets: :tests_js, names: nil, types: :js,
+                         canonical: -> (h) { "test/#{h[:name]}" }),
     ThemeFileMatcher.new(regex: /^settings\.ya?ml$/,
                          names: "yaml", types: :yaml, targets: :settings,
                          canonical: -> (h) { "settings.yml" }),
@@ -520,6 +575,12 @@ class ThemeField < ActiveRecord::Base
     # TODO message for mobile vs desktop
     MessageBus.publish "/header-change/#{theme.id}", self.value if theme && self.name == "header"
     MessageBus.publish "/footer-change/#{theme.id}", self.value if theme && self.name == "footer"
+  end
+
+  after_destroy do
+    if svg_sprite_field?
+      DB.after_commit { SvgSprite.expire_cache }
+    end
   end
 
   private

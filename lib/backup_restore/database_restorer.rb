@@ -51,6 +51,11 @@ module BackupRestore
       end
     end
 
+    def self.core_migration_files
+      Dir[Rails.root.join(Migration::SafeMigrate.post_migration_path, "**/*.rb")] +
+        Dir[Rails.root.join("db/migrate/*.rb")]
+    end
+
     protected
 
     def restore_dump
@@ -136,7 +141,7 @@ module BackupRestore
           "SKIP_OPTIMIZE_ICONS" => "1",
           "DISABLE_TRANSLATION_OVERRIDES" => "1"
         },
-        "rake db:migrate",
+        "rake", "db:migrate",
         failure_message: "Failed to migrate database.",
         chdir: Rails.root
       )
@@ -154,7 +159,7 @@ module BackupRestore
       @created_functions_for_table_columns = []
       all_readonly_table_columns = []
 
-      Dir[Rails.root.join(Migration::SafeMigrate.post_migration_path, "**/*.rb")].each do |path|
+      DatabaseRestorer.core_migration_files.each do |path|
         require path
         class_name = File.basename(path, ".rb").sub(/^\d+_/, "").camelize
         migration_class = class_name.constantize

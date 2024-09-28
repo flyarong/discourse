@@ -4,12 +4,8 @@
 require 'rails_helper'
 
 describe ThemeField do
-  after(:all) do
+  after do
     ThemeField.destroy_all
-  end
-
-  before do
-    I18n.locale = :en
   end
 
   describe "scope: find_by_theme_ids" do
@@ -192,34 +188,22 @@ HTML
     unknown_field = theme.set_field(target: :extra_js, name: "discourse/controllers/discovery.blah", value: "this wont work")
     theme.save!
 
-    expected_js = <<~JS
-      define("discourse/controllers/discovery", ["discourse/lib/ajax"], function (_ajax) {
-        "use strict";
+    js_field.reload
+    expect(js_field.value_baked).to include("if ('define' in window) {")
+    expect(js_field.value_baked).to include("define(\"discourse/theme-#{theme.id}/controllers/discovery\"")
+    expect(js_field.value_baked).to include("console.log('hello from .js.es6');")
 
-        var __theme_name__ = "#{theme.name}";
-
-        var settings = Discourse.__container__.lookup("service:theme-settings").getObjectForTheme(#{theme.id});
-
-        var themePrefix = function themePrefix(key) {
-          return "theme_translations.#{theme.id}.".concat(key);
-        };
-
-        console.log('hello from .js.es6');
-      });
-    JS
-    expect(js_field.reload.value_baked).to eq(expected_js.strip)
-
-    expect(hbs_field.reload.value_baked).to include('Ember.TEMPLATES["discovery"]')
+    expect(hbs_field.reload.value_baked).to include('Ember.TEMPLATES["javascripts/discovery"]')
     expect(raw_hbs_field.reload.value_baked).to include('addRawTemplate("discovery"')
     expect(hbr_field.reload.value_baked).to include('addRawTemplate("other_discovery"')
     expect(unknown_field.reload.value_baked).to eq("")
     expect(unknown_field.reload.error).to eq(I18n.t("themes.compile_error.unrecognized_extension", extension: "blah"))
 
     # All together
-    expect(theme.javascript_cache.content).to include('Ember.TEMPLATES["discovery"]')
+    expect(theme.javascript_cache.content).to include('Ember.TEMPLATES["javascripts/discovery"]')
     expect(theme.javascript_cache.content).to include('addRawTemplate("discovery"')
-    expect(theme.javascript_cache.content).to include('define("discourse/controllers/discovery"')
-    expect(theme.javascript_cache.content).to include('define("discourse/controllers/discovery-2"')
+    expect(theme.javascript_cache.content).to include("define(\"discourse/theme-#{theme.id}/controllers/discovery\"")
+    expect(theme.javascript_cache.content).to include("define(\"discourse/theme-#{theme.id}/controllers/discovery-2\"")
     expect(theme.javascript_cache.content).to include("var settings =")
   end
 
@@ -434,6 +418,17 @@ HTML
     it "is rebaked when upload changes" do
       theme_field.update(upload: Fabricate(:upload))
       expect(theme_field.value_baked).to eq(nil)
+    end
+
+    it "clears SVG sprite cache when upload is deleted" do
+      fname = "custom-theme-icon-sprite.svg"
+      sprite = UploadCreator.new(file_from_fixtures(fname), fname, for_theme: true).create_for(-1)
+
+      theme_field.update(upload: sprite)
+      expect(SvgSprite.custom_svg_sprites(theme.id).size).to eq(1)
+
+      theme_field.destroy!
+      expect(SvgSprite.custom_svg_sprites(theme.id).size).to eq(0)
     end
   end
 

@@ -1,30 +1,27 @@
 # frozen_string_literal: true
 
-InviteRedeemer = Struct.new(:invite, :email, :username, :name, :password, :user_custom_fields, :ip_address, :session, keyword_init: true) do
+InviteRedeemer = Struct.new(:invite, :email, :username, :name, :password, :user_custom_fields, :ip_address, :session, :email_token, keyword_init: true) do
 
   def redeem
     Invite.transaction do
       if invite_was_redeemed?
         process_invitation
-        return invited_user
+        invited_user
       end
     end
-
-    nil
   end
 
   # extracted from User cause it is very specific to invites
-  def self.create_user_from_invite(email:, invite:, username: nil, name: nil, password: nil, user_custom_fields: nil, ip_address: nil, session: nil)
-    user = User.where(staged: true).with_email(email.strip.downcase).first
-    user.unstage! if user
-
-    user ||= User.new
-
-    if username && UsernameValidator.new(username).valid_format? && User.username_available?(username)
+  def self.create_user_from_invite(email:, invite:, username: nil, name: nil, password: nil, user_custom_fields: nil, ip_address: nil, session: nil, email_token: nil)
+    if username && UsernameValidator.new(username).valid_format? && User.username_available?(username, email)
       available_username = username
     else
       available_username = UserNameSuggester.suggest(email)
     end
+
+    user = User.where(staged: true).with_email(email.strip.downcase).first
+    user.unstage! if user
+    user ||= User.new
 
     user.attributes = {
       email: email,
@@ -76,7 +73,7 @@ InviteRedeemer = Struct.new(:invite, :email, :username, :name, :password, :user_
     user.save!
     authenticator.finish
 
-    if invite.emailed_status != Invite.emailed_status_types[:not_required] && email == invite.email
+    if invite.emailed_status != Invite.emailed_status_types[:not_required] && email == invite.email && invite.email_token.present? && email_token == invite.email_token
       user.email_tokens.create!(email: user.email)
       user.activate
     end
@@ -131,7 +128,8 @@ InviteRedeemer = Struct.new(:invite, :email, :username, :name, :password, :user_
       password: password,
       user_custom_fields: user_custom_fields,
       ip_address: ip_address,
-      session: session
+      session: session,
+      email_token: email_token
     )
     result.send_welcome_message = false
     result

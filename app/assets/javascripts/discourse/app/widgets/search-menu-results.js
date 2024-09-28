@@ -10,6 +10,33 @@ import highlightSearch from "discourse/lib/highlight-search";
 import { iconNode } from "discourse-common/lib/icon-library";
 import renderTag from "discourse/lib/render-tag";
 
+const inSearchShortcuts = [
+  "in:title",
+  "in:personal",
+  "in:seen",
+  "in:likes",
+  "in:bookmarks",
+  "in:created",
+];
+const statusSearchShortcuts = [
+  "status:open",
+  "status:closed",
+  "status:public",
+  "status:noreplies",
+];
+const orderSearchShortcuts = [
+  "order:latest",
+  "order:views",
+  "order:likes",
+  "order:latest_topic",
+];
+
+export function addInSearchShortcut(value) {
+  if (inSearchShortcuts.indexOf(value) === -1) {
+    inSearchShortcuts.push(value);
+  }
+}
+
 class Highlighted extends RawHtml {
   constructor(html, term) {
     super({ html: `<span>${html}</span>` });
@@ -102,10 +129,10 @@ createSearchResult({
     let avatarFlair;
     if (group.flairUrl) {
       avatarFlair = this.attach("avatar-flair", {
-        primary_group_flair_url: group.flairUrl,
-        primary_group_flair_bg_color: group.flairBgColor,
-        primary_group_flair_color: group.flairColor,
-        primary_group_name: name,
+        flair_name: name,
+        flair_url: group.flairUrl,
+        flair_bg_color: group.flairBgColor,
+        flair_color: group.flairColor,
       });
     } else {
       avatarFlair = iconNode("users");
@@ -128,6 +155,12 @@ createSearchResult({
     }
 
     userTitles.push(h("span.username", formatUsername(u.username)));
+
+    if (u.custom_data) {
+      u.custom_data.forEach((row) =>
+        userTitles.push(h("span.custom-field", `${row.name}: ${row.value}`))
+      );
+    }
 
     const userResultContents = [
       avatarImg("small", {
@@ -176,8 +209,8 @@ createSearchResult({
     }
 
     const link = h("span.topic", [
-      h("div.first-line", firstLine),
-      h("div.second-line", secondLine),
+      h("span.first-line", firstLine),
+      h("span.second-line", secondLine),
     ]);
 
     return postResult.call(this, result, link, term);
@@ -201,6 +234,14 @@ createWidget("search-menu-results", {
   tagName: "div.results",
 
   html(attrs) {
+    if (attrs.suggestionKeyword) {
+      return this.attach("search-menu-assistant", {
+        fullTerm: attrs.term,
+        suggestionKeyword: attrs.suggestionKeyword,
+        results: attrs.suggestionResults || [],
+      });
+    }
+
     if (attrs.invalidTerm) {
       return h("div.no-results", I18n.t("search.too_short"));
     }
@@ -312,5 +353,136 @@ createWidget("search-menu-results", {
     }
 
     return content;
+  },
+});
+
+createWidget("search-menu-assistant", {
+  tagName: "ul.search-menu-assistant",
+
+  html(attrs) {
+    if (this.siteSettings.tagging_enabled) {
+      addInSearchShortcut("in:tagged");
+    }
+
+    const content = [];
+    const { fullTerm, suggestionKeyword } = attrs;
+    const prefix = fullTerm.split(suggestionKeyword)[0].trim() || null;
+
+    switch (suggestionKeyword) {
+      case "#":
+        attrs.results.map((category) => {
+          const slug = prefix
+            ? `${prefix} #${category.slug} `
+            : `#${category.slug} `;
+
+          content.push(
+            this.attach("search-menu-assistant-item", {
+              prefix: prefix,
+              category,
+              slug,
+            })
+          );
+        });
+        break;
+      case "@":
+        attrs.results.map((user) => {
+          const slug = prefix
+            ? `${prefix} @${user.username} `
+            : `@${user.username} `;
+
+          content.push(
+            this.attach("search-menu-assistant-item", {
+              prefix: prefix,
+              user,
+              slug,
+            })
+          );
+        });
+        break;
+      case "in:":
+        inSearchShortcuts.map((item) => {
+          const slug = prefix ? `${prefix} ${item} ` : item;
+          content.push(this.attach("search-menu-assistant-item", { slug }));
+        });
+        break;
+      case "status:":
+        statusSearchShortcuts.map((item) => {
+          const slug = prefix ? `${prefix} ${item} ` : item;
+          content.push(this.attach("search-menu-assistant-item", { slug }));
+        });
+        break;
+      case "order:":
+        orderSearchShortcuts.map((item) => {
+          const slug = prefix ? `${prefix} ${item} ` : item;
+          content.push(this.attach("search-menu-assistant-item", { slug }));
+        });
+        break;
+    }
+
+    return content;
+  },
+});
+
+createWidget("search-menu-assistant-item", {
+  tagName: "li.search-menu-assistant-item",
+
+  html(attrs) {
+    if (attrs.category) {
+      return h(
+        "a.widget-link.search-link",
+        {
+          attributes: {
+            href: attrs.category.url,
+          },
+        },
+        [
+          h("span.search-item-prefix", attrs.prefix),
+          this.attach("category-link", {
+            category: attrs.category,
+            allowUncategorized: true,
+          }),
+        ]
+      );
+    } else if (attrs.user) {
+      const userResult = [
+        avatarImg("small", {
+          template: attrs.user.avatar_template,
+          username: attrs.user.username,
+        }),
+        h("span.username", formatUsername(attrs.user.username)),
+      ];
+
+      return h(
+        "a.widget-link.search-link",
+        {
+          attributes: {
+            href: "#",
+          },
+        },
+        [
+          h("span.search-item-prefix", attrs.prefix),
+          h("span.search-item-user", userResult),
+        ]
+      );
+    } else {
+      return h(
+        "a.widget-link.search-link",
+        {
+          attributes: {
+            href: "#",
+          },
+        },
+        h("span.search-item-slug", attrs.slug)
+      );
+    }
+  },
+
+  click(e) {
+    const searchInput = document.querySelector("#search-term");
+    searchInput.value = this.attrs.slug;
+    searchInput.focus();
+    this.sendWidgetAction("triggerAutocomplete", this.attrs.slug);
+    e.preventDefault();
+    return false;
   },
 });

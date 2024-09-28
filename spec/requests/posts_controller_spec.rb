@@ -414,9 +414,12 @@ describe PostsController do
         expect(response).to be_forbidden
       end
 
-      it "calls revise with valid parameters" do
-        PostRevisor.any_instance.expects(:revise!).with(post.user, { raw: 'edited body' , edit_reason: 'typo' }, anything)
-        put "/posts/#{post.id}.json", params: update_params
+      it "updates post's raw attribute" do
+        put "/posts/#{post.id}.json", params: { post: { raw: 'edited body   ' } }
+
+        expect(response.status).to eq(200)
+        expect(response.parsed_body['post']['raw']).to eq('edited body')
+        expect(post.reload.raw).to eq('edited body')
       end
 
       it "extracts links from the new body" do
@@ -527,6 +530,34 @@ describe PostsController do
       expect(response.status).to eq(403)
       expect(post.topic.reload.category_id).not_to eq(category.id)
     end
+
+    describe "with Post.plugin_permitted_update_params" do
+      before do
+        plugin = Plugin::Instance.new
+        plugin.add_permitted_post_update_param(:random_number) do |post, value|
+          post.custom_fields[:random_number] = value
+          post.save
+        end
+      end
+
+      after do
+        DiscoursePluginRegistry.reset!
+      end
+
+      it "calls blocks passed into `add_permitted_post_update_param`" do
+        sign_in(post.user)
+        put "/posts/#{post.id}.json", params: {
+          post: {
+            raw: "this is a random post",
+            raw_old: post.raw,
+            random_number: 244
+          }
+        }
+
+        expect(response.status).to eq(200)
+        expect(post.reload.custom_fields[:random_number]).to eq("244")
+      end
+    end
   end
 
   describe "#destroy_bookmark" do
@@ -547,7 +578,7 @@ describe PostsController do
       before do
         Fabricate(:bookmark, user: user, post: Fabricate(:post, topic: post.topic), topic: post.topic)
       end
-      it "marks topic_bookmaked as true" do
+      it "marks topic_bookmarked as true" do
         delete "/posts/#{post.id}/bookmark.json"
         expect(response.parsed_body['topic_bookmarked']).to eq(true)
       end
@@ -877,6 +908,28 @@ describe PostsController do
         expect(user).to be_silenced
       end
 
+      it 'silences correctly based on silence watched words' do
+        SiteSetting.watched_words_regular_expressions = true
+        WatchedWord.create!(action: WatchedWord.actions[:silence], word: 'I love candy')
+        WatchedWord.create!(action: WatchedWord.actions[:silence], word: 'i eat s[1-5]')
+
+        post "/posts.json", params: {
+          raw: 'this is the test content',
+          title: 'when I eat s3 sometimes when not looking'
+        }
+
+        expect(response.status).to eq(200)
+        parsed = response.parsed_body
+
+        expect(parsed["action"]).to eq("enqueued")
+        reviewable = ReviewableQueuedPost.find_by(created_by: user)
+        score = reviewable.reviewable_scores.first
+        expect(score.reason).to eq('auto_silence_regex')
+
+        user.reload
+        expect(user).to be_silenced
+      end
+
       it "can send a message to a group" do
         group = Group.create(name: 'test_group', messageable_level: Group::ALIAS_LEVELS[:nobody])
         user1 = user
@@ -936,7 +989,7 @@ describe PostsController do
 
       it "returns the nested post with a param" do
         post "/posts.json", params: {
-          raw: 'this is the test content',
+          raw: 'this is the test content  ',
           title: 'this is the test title for the topic',
           nested_post: true
         }
@@ -944,6 +997,7 @@ describe PostsController do
         expect(response.status).to eq(200)
         parsed = response.parsed_body
         expect(parsed['post']).to be_present
+        expect(parsed['post']['raw']).to eq('this is the test content')
         expect(parsed['post']['cooked']).to be_present
       end
 
@@ -1873,7 +1927,7 @@ describe PostsController do
   end
 
   describe '#cooked' do
-    it 'returns the cooked conent' do
+    it 'returns the cooked content' do
       post = Fabricate(:post, cooked: "WAt")
       get "/posts/#{post.id}/cooked.json"
 

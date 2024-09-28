@@ -124,12 +124,14 @@ class Admin::UsersController < Admin::AdminController
     end
     @user.logged_out
 
-    Jobs.enqueue(
-      :critical_user_email,
-      type: :account_suspended,
-      user_id: @user.id,
-      user_history_id: user_history.id
-    )
+    if message.present?
+      Jobs.enqueue(
+        :critical_user_email,
+        type: :account_suspended,
+        user_id: @user.id,
+        user_history_id: user_history.id
+      )
+    end
 
     DiscourseEvent.trigger(
       :user_suspended,
@@ -418,7 +420,7 @@ class Admin::UsersController < Admin::AdminController
       rescue UserDestroyer::PostsExistError
         render json: {
           deleted: false,
-          message: "User #{user.username} has #{user.post_count} posts, so they can't be deleted."
+          message: I18n.t("user.cannot_delete_has_posts", username: user.username, count: user.posts.joins(:topic).count),
         }, status: 403
       end
     end
@@ -441,7 +443,7 @@ class Admin::UsersController < Admin::AdminController
 
     begin
       sso = DiscourseSingleSignOn.parse("sso=#{params[:sso]}&sig=#{params[:sig]}", secure_session: secure_session)
-    rescue DiscourseSingleSignOn::ParseError => e
+    rescue DiscourseSingleSignOn::ParseError
       return render json: failed_json.merge(message: I18n.t("discourse_connect.login_error")), status: 422
     end
 

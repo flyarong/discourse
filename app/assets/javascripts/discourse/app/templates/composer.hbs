@@ -25,14 +25,13 @@
                 {{plugin-outlet name="composer-action-after" noTags=true args=(hash model=model)}}
 
                 {{#unless site.mobileView}}
-                  {{#if isWhispering}}
-                    <span class="whisper">{{d-icon "far-eye-slash"}}</span>
-                  {{/if}}
                   {{#if model.unlistTopic}}
                     <span class="unlist">({{i18n "composer.unlist"}})</span>
                   {{/if}}
-                  {{#if model.noBump}}
-                    <span class="no-bump">{{d-icon "anchor"}}</span>
+                  {{#if isWhispering}}
+                    {{#if model.noBump}}
+                      <span class="no-bump">{{d-icon "anchor"}}</span>
+                    {{/if}}
                   {{/if}}
                 {{/unless}}
 
@@ -81,6 +80,7 @@
                       isDisabled=disableCategoryChooser
                       options=(hash
                         scopedCategoryId=scopedCategoryId
+                        prioritizedCategoryId=prioritizedCategoryId
                       )
                     }}
                     {{popup-input-tip validation=categoryValidation}}
@@ -95,6 +95,7 @@
                     options=(hash
                       categoryId=model.categoryId
                       minimum=model.minimumRequiredTags
+                      requiredTagGroups=model.requiredTagGroups
                     )
                   }}
                   {{popup-input-tip validation=tagValidation}}
@@ -117,6 +118,7 @@
                           popupMenuOptions=popupMenuOptions
                           draftStatus=model.draftStatus
                           isUploading=isUploading
+                          isProcessingUpload=isProcessingUpload
                           allowUpload=allowUpload
                           uploadIcon=uploadIcon
                           isCancellable=isCancellable
@@ -129,6 +131,7 @@
                           afterRefresh=(action "afterRefresh")
                           focusTarget=focusTarget}}
 
+        {{plugin-outlet name="composer-after-composer-editor" connectorTagName="" args=(hash model=model)}}
         <div class="submit-panel">
           {{plugin-outlet name="composer-fields-below" args=(hash model=model)}}
 
@@ -164,23 +167,25 @@
               {{/if}}
             {{/if}}
 
-            {{#if isUploading}}
+            {{#if (or isUploading isProcessingUpload)}}
               <div id="file-uploading">
-                {{loading-spinner size="small"}}<span>{{i18n "upload_selector.uploading"}} {{uploadProgress}}%</span>
+                {{#if isProcessingUpload}}
+                  {{loading-spinner size="small"}}<span>{{i18n "upload_selector.processing"}}</span>
+                {{else}}
+                  {{loading-spinner size="small"}}<span>{{i18n "upload_selector.uploading"}} {{uploadProgress}}%</span>
+                {{/if}}
                 {{#if isCancellable}}
                   <a href id="cancel-file-upload" {{action "cancelUpload"}}>{{d-icon "times"}}</a>
                 {{/if}}
               </div>
             {{/if}}
             <div class={{if isUploading "hidden"}} id="draft-status">
-              {{#if model.draftSaving}}<div class="spinner small"></div>{{/if}}
-              {{#if model.draftSaved}}{{d-icon "check" class="save-animation"}}{{/if}}
               {{#if model.draftStatus}}
                 <span title={{model.draftStatus}}>
                   {{#if model.draftConflictUser}}
                     {{avatar model.draftConflictUser imageSize="small"}} {{d-icon "user-edit"}}
                   {{else}}
-                    {{d-icon "sync-alt"}}
+                    {{d-icon "exclamation-triangle"}}
                   {{/if}}
                   {{#unless site.mobileView}}
                     {{model.draftStatus}}
@@ -192,8 +197,10 @@
           </div>
 
           {{#if site.mobileView}}
+            {{plugin-outlet name="composer-mobile-buttons-bottom" connectorTagName="" args=(hash model=model)}}
+
             {{#if allowUpload}}
-              <a class="btn btn-default no-text mobile-file-upload {{if isUploading "hidden"}}"  aria-label={{i18n "composer.upload_title"}}>
+              <a id="mobile-file-upload" class="btn btn-default no-text mobile-file-upload {{if isUploading "hidden"}}"  aria-label={{i18n "composer.upload_title"}}>
                 {{d-icon uploadIcon}}
               </a>
             {{/if}}
@@ -203,10 +210,16 @@
             </a>
 
             {{#if showPreview}}
-              {{d-button action=(action "togglePreview") class="hide-preview" label="composer.hide_preview"}}
+              {{d-button action=(action "togglePreview") class="hide-preview" ariaLabel="composer.hide_preview" icon="pencil-alt"}}
             {{/if}}
           {{else}}
-            <a href {{action "togglePreview"}} class="toggle-preview">{{html-safe toggleText}}</a>
+            {{d-button
+              action=(action "togglePreview")
+              translatedTitle=toggleText
+              translatedAriaLabel=toggleText
+              icon="angle-double-left"
+              class=(concat "btn-flat btn-mini-toggle toggle-preview " (unless showPreview "active"))
+              }}
           {{/if}}
 
         </div>

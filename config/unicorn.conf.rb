@@ -251,19 +251,10 @@ before_fork do |server, worker|
   # to the implementation of standard Unix signal handlers, this
   # helps (but does not completely) prevent identical, repeated signals
   # from being lost when the receiving process is busy.
-  sleep 1
+  sleep 1 if !Rails.env.development?
 end
 
 after_fork do |server, worker|
   DiscourseEvent.trigger(:web_fork_started)
-
-  # warm up v8 after fork, that way we do not fork a v8 context
-  # it may cause issues if bg threads in a v8 isolate randomly stop
-  # working due to fork
   Discourse.after_fork
-  begin
-    PrettyText.cook("warm up **pretty text**")
-  rescue => e
-    Rails.logger.error("Failed to warm up pretty text: #{e}")
-  end
 end

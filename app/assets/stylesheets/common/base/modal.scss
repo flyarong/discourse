@@ -73,7 +73,7 @@
   .modal-close {
     order: 2;
     margin-left: auto;
-    padding-left: 2em;
+
     .close {
       color: var(--primary-high);
     }
@@ -108,21 +108,6 @@
   to {
     opacity: 0.9;
   }
-}
-
-// slide in
-@keyframes slidein {
-  from {
-    transform: translateY(-20%);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
-.create-account.in .modal-inner-container,
-.login-modal.in .modal-inner-container {
-  animation: slidein 0.3s;
 }
 
 .inline-modal {
@@ -445,8 +430,7 @@
   max-width: 420px;
 }
 
-.change-timestamp,
-.poll-ui-builder {
+.change-timestamp {
   #date-container {
     .pika-single {
       position: relative !important; // overriding another important
@@ -493,10 +477,14 @@
   }
   .modal-body {
     overflow-y: visible;
-    #post-jump,
-    .date-picker {
+    #post-jump {
       margin: 0;
       width: 100px;
+    }
+
+    .date-picker {
+      margin: 0;
+      width: 180px;
     }
 
     .input-hint-text {
@@ -507,8 +495,13 @@
       color: var(--primary-medium);
     }
 
-    .jump-to-date-control .input-hint-text {
-      margin-left: 0;
+    .jump-to-date-control {
+      display: flex;
+      align-items: center;
+      .input-hint-text {
+        margin-left: 0;
+        margin-right: 0.5em;
+      }
     }
 
     .separator {
@@ -845,80 +838,16 @@
   }
 }
 
-.create-invite-modal {
+.group-add-members-modal {
   .input-group {
-    margin-bottom: 1em;
+    margin-bottom: 0.5em;
 
     &:last-child {
       margin-bottom: 0;
     }
-
-    input[type="text"] {
-      width: 100%;
-
-      &.invite-link,
-      &#invite-email {
-        width: 85%;
-      }
-    }
   }
 
-  .radio-group {
-    input[type="radio"] {
-      display: inline;
-      vertical-align: middle;
-      margin-top: -1px;
-    }
-
-    label {
-      display: inline-block;
-    }
-  }
-
-  .group-chooser,
-  .future-date-input-selector {
-    width: 100%;
-  }
-
-  .input-group input[type="text"],
-  .input-group .btn,
-  .future-date-input .select-kit-header,
-  .control-group:nth-child(2) input,
-  .control-group:nth-child(3) input {
-    height: 34px;
-  }
-
-  .input-group .btn {
-    vertical-align: top;
-  }
-
-  .future-date-input {
-    .date-picker-wrapper {
-      input {
-        margin: 0;
-      }
-    }
-
-    .control-group:nth-child(2),
-    .control-group:nth-child(3) {
-      display: inline-block;
-      margin-bottom: 0;
-      width: 49%;
-
-      input {
-        margin-bottom: 0;
-        width: 150px;
-      }
-    }
-  }
-
-  .invite-max-redemptions {
-    label {
-      display: inline;
-    }
-
-    input {
-      width: 80px;
-    }
+  .user-chooser {
+    width: calc(100%);
   }
 }

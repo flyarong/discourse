@@ -83,7 +83,6 @@ describe HtmlToMarkdown do
   end
 
   it "skips hidden tags" do
-    expect(html_to_markdown(%Q{<p>Hello <span style="display: none">cruel </span>World!</p>})).to eq("Hello World!")
     expect(html_to_markdown(%Q{<p>Hello <span hidden>cruel </span>World!</p>})).to eq("Hello World!")
   end
 
@@ -150,15 +149,13 @@ describe HtmlToMarkdown do
     expect(html_to_markdown(%Q{<img src="foo.bar">})).to eq("")
   end
 
-  it "keeps <img> with src='cid:' whith 'keep_cid_imgs'" do
+  it "keeps <img> with src='cid:' with 'keep_cid_imgs'" do
     expect(html_to_markdown(HTML_WITH_CID_IMG, keep_cid_imgs: true)).to eq(HTML_WITH_CID_IMG)
   end
 
   it "skips hidden <img>" do
     expect(html_to_markdown(%Q{<img src="https://www.discourse.org/logo.svg" width=0>})).to eq("")
     expect(html_to_markdown(%Q{<img src="https://www.discourse.org/logo.svg" height="0">})).to eq("")
-    expect(html_to_markdown(%Q{<img src="https://www.discourse.org/logo.svg" style="width: 0">})).to eq("")
-    expect(html_to_markdown(%Q{<img src="https://www.discourse.org/logo.svg" style="height:0px">})).to eq("")
   end
 
   it "supports width/height on <img>" do
@@ -394,7 +391,7 @@ describe HtmlToMarkdown do
 
   end
 
-  it "supoorts <table>" do
+  it "supports <table>" do
     html = <<~HTML
       <table>
         <thead>

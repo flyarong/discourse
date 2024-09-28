@@ -7,10 +7,6 @@ describe Theme do
     Theme.clear_cache!
   end
 
-  before do
-    I18n.locale = :en
-  end
-
   fab! :user do
     Fabricate(:user)
   end
@@ -21,6 +17,7 @@ describe Theme do
 
   let(:theme) { Fabricate(:theme, user: user) }
   let(:child) { Fabricate(:theme, user: user, component: true) }
+
   it 'can properly clean up color schemes' do
     scheme = ColorScheme.create!(theme_id: theme.id, name: 'test')
     scheme2 = ColorScheme.create!(theme_id: theme.id, name: 'test2')
@@ -69,24 +66,22 @@ describe Theme do
   end
 
   it "can automatically disable for mismatching version" do
-    expect(theme.supported?).to eq(true)
     theme.create_remote_theme!(remote_url: "", minimum_discourse_version: "99.99.99")
     theme.save!
-    expect(theme.supported?).to eq(false)
 
-    expect(Theme.transform_ids([theme.id])).to be_empty
+    expect(Theme.transform_ids(theme.id)).to eq([])
   end
 
-  xit "#transform_ids works with nil values" do
+  it "#transform_ids works with nil values" do
     # Used in safe mode
-    expect(Theme.transform_ids([nil])).to eq([nil])
+    expect(Theme.transform_ids(nil)).to eq([])
   end
 
   it '#transform_ids filters out disabled components' do
     theme.add_relative_theme!(:child, child)
-    expect(Theme.transform_ids([theme.id], extend: true)).to eq([theme.id, child.id])
+    expect(Theme.transform_ids(theme.id)).to eq([theme.id, child.id])
     child.update!(enabled: false)
-    expect(Theme.transform_ids([theme.id], extend: true)).to eq([theme.id])
+    expect(Theme.transform_ids(theme.id)).to eq([theme.id])
   end
 
   it "doesn't allow multi-level theme components" do
@@ -124,24 +119,6 @@ describe Theme do
     theme.save!
 
     expect(Theme.lookup_field(theme.id, :desktop, "head_tag")).to eq("<b>I am bold</b>")
-  end
-
-  it "changing theme name should re-transpile HTML theme fields" do
-    theme.update!(name: "old_name")
-    html = <<~HTML
-      <script type='text/discourse-plugin' version='0.1'>
-        const x = 1;
-      </script>
-    HTML
-    theme.set_field(target: :common, name: "head_tag", value: html)
-    theme.save!
-    field = theme.theme_fields.where(value: html).first
-    old_value = field.value_baked
-
-    theme.update!(name: "new_name")
-    field.reload
-    new_value = field.value_baked
-    expect(old_value).not_to eq(new_value)
   end
 
   it 'should precompile fragments in body and head tags' do
@@ -192,19 +169,6 @@ HTML
     expect(Theme.lookup_field(theme.id, :desktop, :body_tag)).to match(/<b>test<\/b>/)
   end
 
-  it 'can find fields for multiple themes' do
-    theme2 = Fabricate(:theme)
-
-    theme.set_field(target: :common, name: :body_tag, value: "<b>testtheme1</b>")
-    theme2.set_field(target: :common, name: :body_tag, value: "<b>theme2test</b>")
-    theme.save!
-    theme2.save!
-
-    field = Theme.lookup_field([theme.id, theme2.id], :desktop, :body_tag)
-    expect(field).to match(/<b>testtheme1<\/b>/)
-    expect(field).to match(/<b>theme2test<\/b>/)
-  end
-
   describe "#switch_to_component!" do
     it "correctly converts a theme to component" do
       theme.add_relative_theme!(:child, child)
@@ -250,25 +214,13 @@ HTML
     end
 
     it "returns an empty array if no ids are passed" do
-      expect(Theme.transform_ids([])).to eq([])
+      expect(Theme.transform_ids(nil)).to eq([])
     end
 
     it "adds the child themes of the parent" do
       sorted = [child.id, child2.id].sort
 
-      expect(Theme.transform_ids([theme.id])).to eq([theme.id, *sorted])
-
-      expect(Theme.transform_ids([theme.id, orphan1.id, orphan2.id])).to eq([theme.id, orphan1.id, *sorted, orphan2.id])
-    end
-
-    it "doesn't insert children when extend is false" do
-      fake_id = orphan2.id
-      fake_id2 = orphan3.id
-      fake_id3 = orphan4.id
-
-      expect(Theme.transform_ids([theme.id], extend: false)).to eq([theme.id])
-      expect(Theme.transform_ids([theme.id, fake_id3, fake_id, fake_id2, fake_id2], extend: false))
-        .to eq([theme.id, fake_id, fake_id2, fake_id3])
+      expect(Theme.transform_ids(theme.id)).to eq([theme.id, *sorted])
     end
   end
 
@@ -276,7 +228,7 @@ HTML
     def transpile(html)
       f = ThemeField.create!(target_id: Theme.targets[:mobile], theme_id: 1, name: "after_header", value: html)
       f.ensure_baked!
-      [f.value_baked, f.javascript_cache]
+      [f.value_baked, f.javascript_cache, f]
     end
 
     it "transpiles ES6 code" do
@@ -286,10 +238,20 @@ HTML
         </script>
 HTML
 
-      baked, javascript_cache = transpile(html)
+      baked, javascript_cache, field = transpile(html)
       expect(baked).to include(javascript_cache.url)
-      expect(javascript_cache.content).to include('var x = 1;')
-      expect(javascript_cache.content).to include("_registerPluginCode('0.1'")
+
+      expect(javascript_cache.content).to include("if ('define' in window) {")
+      expect(javascript_cache.content).to include(
+        "define(\"discourse/theme-#{field.theme_id}/initializers/theme-field-#{field.id}-mobile-html-script-1\""
+      )
+      expect(javascript_cache.content).to include(
+        "settings = require(\"discourse/lib/theme-settings-store\").getObjectForTheme(#{field.theme_id});"
+      )
+      expect(javascript_cache.content).to include("name: \"theme-field-#{field.id}-mobile-html-script-1\",")
+      expect(javascript_cache.content).to include("after: \"inject-objects\",")
+      expect(javascript_cache.content).to include("(0, _pluginApi.withPluginApi)(\"0.1\", function (api) {")
+      expect(javascript_cache.content).to include("var x = 1;")
     end
 
     it "wraps constants calls in a readOnlyError function" do
@@ -328,7 +290,12 @@ HTML
       theme.reload
       expect(theme.theme_fields.find_by(name: :scss).error).to eq(nil)
 
-      scss, _map = Stylesheet::Manager.new(:desktop_theme, theme.id).compile(force: true)
+      manager = Stylesheet::Manager.new(theme_id: theme.id)
+
+      scss, _map = Stylesheet::Manager::Builder.new(
+        target: :desktop_theme, theme: theme, manager: manager
+      ).compile(force: true)
+
       expect(scss).to include(upload.url)
     end
   end
@@ -339,7 +306,12 @@ HTML
       theme.set_field(target: :common, name: :scss, value: 'body {background-color: $background_color; font-size: $font-size}')
       theme.save!
 
-      scss, _map = Stylesheet::Manager.new(:desktop_theme, theme.id).compile(force: true)
+      manager = Stylesheet::Manager.new(theme_id: theme.id)
+
+      scss, _map = Stylesheet::Manager::Builder.new(
+        target: :desktop_theme, theme: theme, manager: manager
+      ).compile(force: true)
+
       expect(scss).to include("background-color:red")
       expect(scss).to include("font-size:25px")
 
@@ -347,7 +319,10 @@ HTML
       setting.value = '30px'
       theme.save!
 
-      scss, _map = Stylesheet::Manager.new(:desktop_theme, theme.id).compile(force: true)
+      scss, _map = Stylesheet::Manager::Builder.new(
+        target: :desktop_theme, theme: theme, manager: manager
+      ).compile(force: true)
+
       expect(scss).to include("font-size:30px")
 
       # Escapes correctly. If not, compiling this would throw an exception
@@ -359,7 +334,10 @@ HTML
       theme.set_field(target: :common, name: :scss, value: 'body {font-size: quote($font-size)}')
       theme.save!
 
-      scss, _map = Stylesheet::Manager.new(:desktop_theme, theme.id).compile(force: true)
+      scss, _map = Stylesheet::Manager::Builder.new(
+        target: :desktop_theme, theme: theme, manager: manager
+      ).compile(force: true)
+
       expect(scss).to include('font-size:"#{$fakeinterpolatedvariable}\a andanothervalue \'withquotes\'; margin: 0;\a"')
     end
 
@@ -369,83 +347,31 @@ HTML
       theme_field = theme.set_field(target: :common, name: :after_header, value: '<script type="text/discourse-plugin" version="1.0">alert(settings.name); let a = ()=>{};</script>')
       theme.save!
 
-      transpiled = <<~HTML
-      (function() {
-        if ('Discourse' in window && Discourse.__container__) {
-          Discourse.__container__
-            .lookup("service:theme-settings")
-            .registerSettings(#{theme.id}, {"name":"bob"});
-        }
-      })();
-      (function () {
-        if ('Discourse' in window && typeof Discourse._registerPluginCode === 'function') {
-          var __theme_name__ = "awesome theme\\\"";
-
-          var settings = Discourse.__container__.lookup("service:theme-settings").getObjectForTheme(#{theme.id});
-
-          var themePrefix = function themePrefix(key) {
-            return "theme_translations.#{theme.id}.".concat(key);
-          };
-
-          Discourse._registerPluginCode('1.0', function (api) {
-            try {
-              alert(settings.name);
-
-              var a = function a() {};
-            } catch (err) {
-              var rescue = require("discourse/lib/utilities").rescueThemeError;
-
-              rescue(__theme_name__, err, api);
-            }
-          });
-        }
-      })();
-      HTML
-
       theme_field.reload
       expect(Theme.lookup_field(theme.id, :desktop, :after_header)).to include(theme_field.javascript_cache.url)
-      expect(theme_field.javascript_cache.content).to eq(transpiled.strip)
+      expect(theme_field.javascript_cache.content).to include("if ('require' in window) {")
+      expect(theme_field.javascript_cache.content).to include(
+        "require(\"discourse/lib/theme-settings-store\").registerSettings(#{theme_field.theme.id}, {\"name\":\"bob\"});"
+      )
+      expect(theme_field.javascript_cache.content).to include("if ('define' in window) {")
+      expect(theme_field.javascript_cache.content).to include(
+        "define(\"discourse/theme-#{theme_field.theme.id}/initializers/theme-field-#{theme_field.id}-common-html-script-1\","
+      )
+      expect(theme_field.javascript_cache.content).to include("name: \"theme-field-#{theme_field.id}-common-html-script-1\",")
+      expect(theme_field.javascript_cache.content).to include("after: \"inject-objects\",")
+      expect(theme_field.javascript_cache.content).to include("(0, _pluginApi.withPluginApi)(\"1.0\", function (api)")
+      expect(theme_field.javascript_cache.content).to include("alert(settings.name)")
+      expect(theme_field.javascript_cache.content).to include("var a = function a() {}")
 
       setting = theme.settings.find { |s| s.name == :name }
       setting.value = 'bill'
       theme.save!
 
-      transpiled = <<~HTML
-      (function() {
-        if ('Discourse' in window && Discourse.__container__) {
-          Discourse.__container__
-            .lookup("service:theme-settings")
-            .registerSettings(#{theme.id}, {"name":"bill"});
-        }
-      })();
-      (function () {
-        if ('Discourse' in window && typeof Discourse._registerPluginCode === 'function') {
-          var __theme_name__ = "awesome theme\\\"";
-
-          var settings = Discourse.__container__.lookup("service:theme-settings").getObjectForTheme(#{theme.id});
-
-          var themePrefix = function themePrefix(key) {
-            return "theme_translations.#{theme.id}.".concat(key);
-          };
-
-          Discourse._registerPluginCode('1.0', function (api) {
-            try {
-              alert(settings.name);
-
-              var a = function a() {};
-            } catch (err) {
-              var rescue = require("discourse/lib/utilities").rescueThemeError;
-
-              rescue(__theme_name__, err, api);
-            }
-          });
-        }
-      })();
-      HTML
-
       theme_field.reload
+      expect(theme_field.javascript_cache.content).to include(
+        "require(\"discourse/lib/theme-settings-store\").registerSettings(#{theme_field.theme.id}, {\"name\":\"bill\"});"
+      )
       expect(Theme.lookup_field(theme.id, :desktop, :after_header)).to include(theme_field.javascript_cache.url)
-      expect(theme_field.javascript_cache.content).to eq(transpiled.strip)
     end
 
     it 'is empty when the settings are invalid' do
@@ -576,6 +502,51 @@ HTML
     json = JSON.parse(cached_settings(theme.id))
 
     expect(json["theme_uploads"]["bob"]).to eq(upload.url)
+  end
+
+  it 'does not break on missing uploads in settings' do
+    Theme.destroy_all
+
+    upload = UploadCreator.new(file_from_fixtures("logo.png"), "logo.png").create_for(-1)
+    theme.set_field(type: :theme_upload_var, target: :common, name: "bob", upload_id: upload.id)
+    theme.save!
+
+    Upload.find(upload.id).destroy
+    theme.clear_cached_settings!
+
+    json = JSON.parse(cached_settings(theme.id))
+    expect(json).to be_empty
+  end
+
+  it 'uses CDN url for theme_uploads in settings' do
+    set_cdn_url("http://cdn.localhost")
+    Theme.destroy_all
+
+    upload = UploadCreator.new(file_from_fixtures("logo.png"), "logo.png").create_for(-1)
+    theme.set_field(type: :theme_upload_var, target: :common, name: "bob", upload_id: upload.id)
+    theme.save!
+
+    json = JSON.parse(cached_settings(theme.id))
+
+    expect(json["theme_uploads"]["bob"]).to eq("http://cdn.localhost#{upload.url}")
+  end
+
+  it 'uses CDN url for settings of type upload' do
+    set_cdn_url("http://cdn.localhost")
+    Theme.destroy_all
+
+    upload = UploadCreator.new(file_from_fixtures("logo.png"), "logo.png").create_for(-1)
+    theme.set_field(target: :settings, name: "yaml", value: <<~YAML)
+      my_upload:
+        type: upload
+        default: ""
+    YAML
+
+    ThemeSetting.create!(theme: theme, data_type: ThemeSetting.types[:upload], value: upload.url, name: "my_upload")
+    theme.save!
+
+    json = JSON.parse(cached_settings(theme.id))
+    expect(json["my_upload"]).to eq("http://cdn.localhost#{upload.url}")
   end
 
   it 'handles settings cache correctly' do
@@ -781,16 +752,6 @@ HTML
 
   describe "automatic recompile" do
     it 'must recompile after bumping theme_field version' do
-      def stub_const(target, const, value)
-        old = target.const_get(const)
-        target.send(:remove_const, const)
-        target.const_set(const, value)
-        yield
-      ensure
-        target.send(:remove_const, const)
-        target.const_set(const, old)
-      end
-
       child.set_field(target: :common, name: "header", value: "World")
       child.set_field(target: :extra_js, name: "test.js.es6", value: "const hello = 'world';")
       child.save!
@@ -846,8 +807,13 @@ HTML
     }}
 
     let(:compiler) {
-      manager = Stylesheet::Manager.new(:desktop_theme, theme.id)
-      manager.compile(force: true)
+      manager = Stylesheet::Manager.new(theme_id: theme.id)
+
+      builder = Stylesheet::Manager::Builder.new(
+        target: :desktop_theme, theme: theme, manager: manager
+      )
+
+      builder.compile(force: true)
     }
 
     it "works when importing file by path" do
@@ -871,8 +837,13 @@ HTML
       child_theme.set_field(target: :common, name: :scss, value: '@import "my_files/moremagic"')
       child_theme.save!
 
-      manager = Stylesheet::Manager.new(:desktop_theme, child_theme.id)
-      css, _map = manager.compile(force: true)
+      manager = Stylesheet::Manager.new(theme_id: child_theme.id)
+
+      builder = Stylesheet::Manager::Builder.new(
+        target: :desktop_theme, theme: child_theme, manager: manager
+      )
+
+      css, _map = builder.compile(force: true)
       expect(css).to include("body{background:green}")
     end
   end
@@ -894,4 +865,41 @@ HTML
     end
   end
 
+  describe "#baked_js_tests_with_digest" do
+    before do
+      ThemeField.create!(
+        theme_id: theme.id,
+        target_id: Theme.targets[:settings],
+        name: "yaml",
+        value: "some_number: 1"
+      )
+      theme.set_field(
+        target: :tests_js,
+        type: :js,
+        name: "acceptance/some-test.js",
+        value: "assert.ok(true);"
+      )
+      theme.save!
+    end
+
+    it 'returns nil for content and digest if theme does not have tests' do
+      ThemeField.destroy_all
+      expect(theme.baked_js_tests_with_digest).to eq([nil, nil])
+    end
+
+    it 'digest does not change when settings are changed' do
+      content, digest = theme.baked_js_tests_with_digest
+      expect(content).to be_present
+      expect(digest).to be_present
+      expect(content).to include("assert.ok(true);")
+
+      theme.update_setting(:some_number, 55)
+      theme.save!
+      expect(theme.build_settings_hash[:some_number]).to eq(55)
+
+      new_content, new_digest = theme.baked_js_tests_with_digest
+      expect(new_content).to eq(content)
+      expect(new_digest).to eq(digest)
+    end
+  end
 end

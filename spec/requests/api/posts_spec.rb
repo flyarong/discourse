@@ -51,9 +51,10 @@ describe 'posts' do
                 category_id: { type: :integer },
                 display_username: { type: :string },
                 primary_group_name: { type: :string, nullable: true },
-                primary_group_flair_url: { type: :string, nullable: true },
-                primary_group_flair_bg_color: { type: :string, nullable: true },
-                primary_group_flair_color: { type: :string, nullable: true },
+                flair_name: { type: :string, nullable: true },
+                flair_url: { type: :string, nullable: true },
+                flair_bg_color: { type: :string, nullable: true },
+                flair_color: { type: :string, nullable: true },
                 version: { type: :integer },
                 can_edit: { type: :boolean },
                 can_delete: { type: :boolean },
@@ -118,7 +119,7 @@ describe 'posts' do
 
   path '/posts/{id}.json' do
 
-    get 'Retreive a single post' do
+    get 'Retrieve a single post' do
       tags 'Posts'
       parameter name: 'Api-Key', in: :header, type: :string, required: true
       parameter name: 'Api-Username', in: :header, type: :string, required: true
@@ -149,9 +150,10 @@ describe 'posts' do
           topic_slug: { type: :string },
           display_username: { type: :string, nullable: true },
           primary_group_name: { type: :string, nullable: true },
-          primary_group_flair_url: { type: :string, nullable: true },
-          primary_group_flair_bg_color: { type: :string, nullable: true },
-          primary_group_flair_color: { type: :string, nullable: true },
+          flair_name: { type: :string, nullable: true },
+          flair_url: { type: :string, nullable: true },
+          flair_bg_color: { type: :string, nullable: true },
+          flair_color: { type: :string, nullable: true },
           version: { type: :integer },
           can_edit: { type: :boolean },
           can_delete: { type: :boolean },
@@ -237,9 +239,9 @@ describe 'posts' do
               topic_slug: { type: :string },
               display_username: { type: :string, nullable: true },
               primary_group_name: { type: :string, nullable: true },
-              primary_group_flair_url: { type: :string, nullable: true },
-              primary_group_flair_bg_color: { type: :string, nullable: true },
-              primary_group_flair_color: { type: :string, nullable: true },
+              flair_url: { type: :string, nullable: true },
+              flair_bg_color: { type: :string, nullable: true },
+              flair_color: { type: :string, nullable: true },
               version: { type: :integer },
               can_edit: { type: :boolean },
               can_delete: { type: :boolean },
@@ -359,9 +361,10 @@ describe 'posts' do
           topic_slug: { type: :string },
           display_username: { type: :string },
           primary_group_name: { type: :string, nullable: true },
-          primary_group_flair_url: { type: :string, nullable: true },
-          primary_group_flair_bg_color: { type: :string, nullable: true },
-          primary_group_flair_color: { type: :string, nullable: true },
+          flair_name: { type: :string, nullable: true },
+          flair_url: { type: :string, nullable: true },
+          flair_bg_color: { type: :string, nullable: true },
+          flair_color: { type: :string, nullable: true },
           version: { type: :integer },
           can_edit: { type: :boolean },
           can_delete: { type: :boolean },

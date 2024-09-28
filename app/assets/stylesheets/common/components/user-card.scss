@@ -48,7 +48,6 @@ $avatar_margin: -50px; // negative margin makes avatars extend above cards
   .card-content {
     padding: 10px;
     background: rgba(var(--secondary-rgb), 0.85);
-    margin-top: 80px;
     &:after {
       content: "";
       display: block;
@@ -59,11 +58,6 @@ $avatar_margin: -50px; // negative margin makes avatars extend above cards
     }
     .bio {
       @include line-clamp(2);
-    }
-  }
-  &.no-bg {
-    .card-content {
-      margin-top: 0;
     }
   }
   .card-row:not(.first-row) {
@@ -231,8 +225,7 @@ $avatar_margin: -50px; // negative margin makes avatars extend above cards
 
   // badges
   .badge-section {
-    display: flex;
-    align-items: flex-start;
+    line-height: 0;
     .user-badge {
       @include ellipsis;
       background: var(--primary-very-low);
@@ -242,11 +235,13 @@ $avatar_margin: -50px; // negative margin makes avatars extend above cards
     .user-card-badge-link {
       overflow: hidden;
     }
+    .user-card-badge-link,
     .more-user-badges {
-      flex: 0 0 auto; // this is more important than other badges, so don't allow it to shrink
-      a {
-        @extend .user-badge;
-      }
+      vertical-align: top;
+      display: inline-block;
+    }
+    .more-user-badges a {
+      @extend .user-badge;
     }
   }
 }

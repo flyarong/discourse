@@ -14,7 +14,8 @@ export default Mixin.create({
     }
 
     this.controllerFor("composer").open({
-      categoryId,
+      prioritizedCategoryId: categoryId,
+      topicCategoryId: categoryId,
       action: Composer.CREATE_TOPIC,
       draftKey: controller.get("model.draft_key") || Composer.NEW_TOPIC_KEY,
       draftSequence: controller.get("model.draft_sequence") || 0,
@@ -39,7 +40,12 @@ export default Mixin.create({
     });
   },
 
-  openComposerWithMessageParams(recipients, topicTitle, topicBody) {
+  openComposerWithMessageParams({
+    recipients = [],
+    topicTitle = "",
+    topicBody = "",
+    hasGroups = false,
+  } = {}) {
     this.controllerFor("composer").open({
       action: Composer.PRIVATE_MESSAGE,
       recipients,
@@ -47,6 +53,7 @@ export default Mixin.create({
       topicBody,
       archetypeId: "private_message",
       draftKey: Composer.NEW_PRIVATE_MESSAGE_KEY,
+      hasGroups: hasGroups,
     });
   },
 });

@@ -34,7 +34,8 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
         expect(actions.has?(:agree_and_keep_hidden)).to eq(false)
         expect(actions.has?(:agree_and_silence)).to eq(true)
         expect(actions.has?(:agree_and_suspend)).to eq(true)
-        expect(actions.has?(:delete_spammer)).to eq(true)
+        expect(actions.has?(:delete_user)).to eq(true)
+        expect(actions.has?(:delete_user_block)).to eq(true)
         expect(actions.has?(:disagree)).to eq(true)
         expect(actions.has?(:ignore)).to eq(true)
         expect(actions.has?(:delete_and_ignore)).to eq(true)
@@ -137,7 +138,7 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
     end
 
     it "supports deleting a spammer" do
-      reviewable.perform(moderator, :delete_spammer)
+      reviewable.perform(moderator, :delete_user_block)
       expect(reviewable).to be_approved
       expect(score.reload).to be_agreed
       expect(post.reload.deleted_at).to be_present
@@ -302,6 +303,23 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
       reviewable.perform(moderator, :disagree_and_restore)
 
       assert_pm_creation_enqueued(reviewable.post.user_id, "flags_disagreed")
+    end
+  end
+
+  describe 'recalculating the reviewable score' do
+    let(:expected_score) { 8 }
+    let(:reviewable) { Fabricate(:reviewable_flagged_post, score: expected_score) }
+
+    it "doesn't recalculate the score after ignore" do
+      reviewable.perform(moderator, :ignore)
+
+      expect(reviewable.score).to eq(expected_score)
+    end
+
+    it "doesn't recalculate the score after disagree" do
+      reviewable.perform(moderator, :disagree)
+
+      expect(reviewable.score).to eq(expected_score)
     end
   end
 

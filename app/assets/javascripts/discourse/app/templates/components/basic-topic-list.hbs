@@ -2,7 +2,7 @@
   {{#if hasIncoming}}
     <div class="show-mores">
       <a tabindex="0" href {{action showInserted}} class="alert alert-info clickable">
-        {{count-i18n key="topic_count_" suffix="latest" count=2}}
+        {{count-i18n key="topic_count_" suffix="latest" count=incomingCount}}
       </a>
     </div>
   {{/if}}
@@ -20,6 +20,8 @@
       tagsForUser=tagsForUser
       onScroll=onScroll
       scrollOnLoad=scrollOnLoad
+      toggleBulkSelect=toggleBulkSelect
+      updateAutoAddTopicsToBulkSelect=updateAutoAddTopicsToBulkSelect
     }}
   {{else}}
     {{#unless loadingMore}}

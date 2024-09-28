@@ -14,7 +14,8 @@ import { h } from "virtual-dom";
  */
 export default createWidget("quick-access-panel", {
   tagName: "div.quick-access-panel",
-  emptyStatePlaceholderItemKey: "",
+  emptyStatePlaceholderItemKey: null,
+  emptyStateWidget: null,
 
   buildKey: () => {
     throw Error('Cannot attach abstract widget "quick-access-panel".');
@@ -60,6 +61,8 @@ export default createWidget("quick-access-panel", {
   emptyStatePlaceholderItem() {
     if (this.emptyStatePlaceholderItemKey) {
       return h("li.read", I18n.t(this.emptyStatePlaceholderItemKey));
+    } else if (this.emptyStateWidget) {
+      return this.attach(this.emptyStateWidget);
     } else {
       return "";
     }
@@ -76,7 +79,7 @@ export default createWidget("quick-access-panel", {
   },
 
   refreshNotifications(state) {
-    if (this.loading) {
+    if (state.loading) {
       return;
     }
 
@@ -137,7 +140,7 @@ export default createWidget("quick-access-panel", {
           title: "user.dismiss_notifications_tooltip",
           icon: "check",
           label: "user.dismiss",
-          className: "notifications-dismiss",
+          className: "btn btn-default notifications-dismiss",
           action: "dismissNotifications",
         })
       );

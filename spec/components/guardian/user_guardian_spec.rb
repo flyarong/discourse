@@ -273,7 +273,7 @@ describe UserGuardian do
         expect(guardian.can_delete_user?(user)).to eq(true)
       end
 
-      it "is allowed when user created multiple posts in PMs to themself" do
+      it "is allowed when user created multiple posts in PMs to themselves" do
         topic = Fabricate(:private_message_topic, user: user, topic_allowed_users: [
           Fabricate.build(:topic_allowed_user, user: user)
         ])
@@ -456,31 +456,40 @@ describe UserGuardian do
     end
   end
 
-  describe '#can_edit_post?' do
-    fab!(:category) { Fabricate(:category) }
+  describe "#can_change_tracking_preferences?" do
+    let(:staged_user) { Fabricate(:staged) }
+    let(:admin_user) { Fabricate(:admin) }
 
-    let(:topic) { Fabricate(:topic, category: category) }
-    let(:post_with_draft) { Fabricate(:post, topic: topic) }
-
-    before do
-      SiteSetting.shared_drafts_category = category.id
-      SiteSetting.shared_drafts_min_trust_level = '2'
-      Fabricate(:shared_draft, topic: topic)
+    it "is true for normal TL0 user" do
+      expect(Guardian.new(user).can_change_tracking_preferences?(user)).to eq(true)
     end
 
-    it 'returns true if a shared draft exists' do
-      expect(Guardian.new(trust_level_2).can_edit_post?(post_with_draft)).to eq(true)
+    it "is true for admin user" do
+      expect(Guardian.new(admin_user).can_change_tracking_preferences?(admin_user)).to eq(true)
     end
 
-    it 'returns false if the user has a lower trust level' do
-      expect(Guardian.new(trust_level_1).can_edit_post?(post_with_draft)).to eq(false)
+    context "allow_changing_staged_user_tracking is false" do
+      before { SiteSetting.allow_changing_staged_user_tracking = false }
+
+      it "is false to staged user" do
+        expect(Guardian.new(staged_user).can_change_tracking_preferences?(staged_user)).to eq(false)
+      end
+
+      it "is false for staged user as admin user" do
+        expect(Guardian.new(admin_user).can_change_tracking_preferences?(staged_user)).to eq(false)
+      end
     end
 
-    it 'returns false if the draft is from a different category' do
-      topic.update!(category: Fabricate(:category))
+    context "allow_changing_staged_user_tracking is true" do
+      before { SiteSetting.allow_changing_staged_user_tracking = true }
 
-      expect(Guardian.new(trust_level_2).can_edit_post?(post_with_draft)).to eq(false)
+      it "is true to staged user" do
+        expect(Guardian.new(staged_user).can_change_tracking_preferences?(staged_user)).to eq(true)
+      end
+
+      it "is true for staged user as admin user" do
+        expect(Guardian.new(admin_user).can_change_tracking_preferences?(staged_user)).to eq(true)
+      end
     end
-
   end
 end

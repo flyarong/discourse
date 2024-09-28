@@ -1,5 +1,7 @@
 import Pretender from "pretender";
 import User from "discourse/models/user";
+import getURL from "discourse-common/lib/get-url";
+import { Promise } from "rsvp";
 
 export function parsePostData(query) {
   const result = {};
@@ -39,7 +41,15 @@ const helpers = { response, success, parsePostData };
 
 export let fixturesByUrl;
 
-export default new Pretender();
+const instance = new Pretender();
+
+const oldRegister = instance.register;
+instance.register = (...args) => {
+  args[1] = getURL(args[1]);
+  return oldRegister.call(instance, ...args);
+};
+
+export default instance;
 
 export function pretenderHelpers() {
   return { parsePostData, response, success };
@@ -69,8 +79,6 @@ export function applyDefaultHandlers(pretender) {
     if (loggedIn()) {
       // Stuff to let us post
       json.topic_list.can_create_topic = true;
-      json.topic_list.draft_key = "new_topic";
-      json.topic_list.draft_sequence = 1;
     }
     return response(json);
   });
@@ -81,8 +89,6 @@ export function applyDefaultHandlers(pretender) {
     if (loggedIn()) {
       // Stuff to let us post
       json.topic_list.can_create_topic = true;
-      json.topic_list.draft_key = "new_topic";
-      json.topic_list.draft_sequence = 1;
     }
     return response(json);
   });
@@ -189,10 +195,23 @@ export function applyDefaultHandlers(pretender) {
   });
 
   pretender.get("/u/eviltrout/invited.json", () => {
-    return response({ invites: [{ id: 1 }] });
+    return response({
+      invites: [],
+      can_see_invite_details: true,
+      counts: {
+        pending: 0,
+        expired: 0,
+        redeemed: 0,
+        total: 0,
+      },
+    });
   });
 
   pretender.get("/topics/private-messages/eviltrout.json", () => {
+    return response(fixturesByUrl["/topics/private-messages/eviltrout.json"]);
+  });
+
+  pretender.get("/topics/private-messages-warnings/eviltrout.json", () => {
     return response(fixturesByUrl["/topics/private-messages/eviltrout.json"]);
   });
 
@@ -449,6 +468,10 @@ export function applyDefaultHandlers(pretender) {
     return response({ available: true });
   });
 
+  pretender.get("/u/check_email", function () {
+    return response({ success: "OK" });
+  });
+
   pretender.post("/u", () => response({ success: true }));
 
   pretender.get("/login.html", () => [200, {}, "LOGIN PAGE"]);
@@ -457,10 +480,15 @@ export function applyDefaultHandlers(pretender) {
   pretender.put("/posts/:post_id/recover", success);
   pretender.get("/posts/:post_id/expand-embed", success);
 
-  pretender.put("/posts/:post_id", (request) => {
+  pretender.put("/posts/:post_id", async (request) => {
     const data = parsePostData(request.requestBody);
     if (data.post.raw === "this will 409") {
       return response(409, { errors: ["edit conflict"] });
+    } else if (data.post.raw === "will return empty json") {
+      window.resolveLastPromise();
+      return new Promise((resolve) => {
+        window.resolveLastPromise = resolve;
+      }).then(() => response(200, {}));
     }
     data.post.id = request.params.post_id;
     data.post.version = 2;
@@ -490,7 +518,7 @@ export function applyDefaultHandlers(pretender) {
     });
   });
 
-  pretender.get("groups", () => {
+  pretender.get("/groups", () => {
     return response(200, fixturesByUrl["/groups.json"]);
   });
 
@@ -498,7 +526,7 @@ export function applyDefaultHandlers(pretender) {
     return response(200, fixturesByUrl["/groups.json?username=eviltrout"]);
   });
 
-  pretender.get("groups/search.json", () => {
+  pretender.get("/groups/search.json", () => {
     return response(200, []);
   });
 
@@ -558,6 +586,9 @@ export function applyDefaultHandlers(pretender) {
     response(200, fixturesByUrl["/user_badges"])
   );
   pretender.delete("/user_badges/:badge_id", success);
+  pretender.put("/user_badges/:id/toggle_favorite", () =>
+    response(200, { user_badge: { is_favorite: true } })
+  );
 
   pretender.post("/posts", function (request) {
     const data = parsePostData(request.requestBody);
@@ -760,12 +791,12 @@ export function applyDefaultHandlers(pretender) {
     });
   });
 
-  pretender.get("/admin/logs/watched_words", () => {
-    return response(200, fixturesByUrl["/admin/logs/watched_words.json"]);
+  pretender.get("/admin/customize/watched_words", () => {
+    return response(200, fixturesByUrl["/admin/customize/watched_words.json"]);
   });
-  pretender.delete("/admin/logs/watched_words/:id.json", success);
+  pretender.delete("/admin/customize/watched_words/:id.json", success);
 
-  pretender.post("/admin/logs/watched_words.json", (request) => {
+  pretender.post("/admin/customize/watched_words.json", (request) => {
     const result = parsePostData(request.requestBody);
     result.id = new Date().getTime();
     return response(200, result);
@@ -837,6 +868,16 @@ export function applyDefaultHandlers(pretender) {
       ];
     }
 
+    if (
+      request.queryParams.url === "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    ) {
+      return [
+        200,
+        { "Content-Type": "application/html" },
+        '<img src="https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg" width="480" height="360" title="Rick Astley - Never Gonna Give You Up (Video)">',
+      ];
+    }
+
     if (request.queryParams.url.indexOf("/internal-page.html") > -1) {
       return [
         200,
@@ -895,5 +936,174 @@ export function applyDefaultHandlers(pretender) {
     }
 
     return [404, { "Content-Type": "application/html" }, ""];
+  });
+
+  pretender.get("edit-directory-columns.json", () => {
+    return response(200, {
+      directory_columns: [
+        {
+          id: 1,
+          name: "likes_received",
+          type: "automatic",
+          enabled: true,
+          automatic_position: 1,
+          position: 1,
+          icon: "heart",
+          user_field: null,
+        },
+        {
+          id: 2,
+          name: "likes_given",
+          type: "automatic",
+          enabled: true,
+          automatic_position: 2,
+          position: 2,
+          icon: "heart",
+          user_field: null,
+        },
+        {
+          id: 3,
+          name: "topic_count",
+          type: "automatic",
+          enabled: true,
+          automatic_position: 3,
+          position: 3,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 4,
+          name: "post_count",
+          type: "automatic",
+          enabled: true,
+          automatic_position: 4,
+          position: 4,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 5,
+          name: "topics_entered",
+          type: "automatic",
+          enabled: true,
+          automatic_position: 5,
+          position: 5,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 6,
+          name: "posts_read",
+          type: "automatic",
+          enabled: true,
+          automatic_position: 6,
+          position: 6,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 7,
+          name: "days_visited",
+          type: "automatic",
+          enabled: true,
+          automatic_position: 7,
+          position: 7,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 9,
+          name: null,
+          type: "user_field",
+          enabled: false,
+          automatic_position: null,
+          position: 8,
+          icon: null,
+          user_field: {
+            id: 3,
+            name: "Favorite Color",
+            description: "User's favorite color",
+            field_type: "text",
+            editable: false,
+            required: false,
+            show_on_profile: false,
+            show_on_user_card: true,
+            searchable: true,
+            position: 2,
+          },
+        },
+      ],
+    });
+  });
+
+  pretender.get("/directory-columns.json", () => {
+    return response(200, {
+      directory_columns: [
+        {
+          id: 1,
+          name: "likes_received",
+          type: "automatic",
+          position: 1,
+          icon: "heart",
+          user_field: null,
+        },
+        {
+          id: 2,
+          name: "likes_given",
+          type: "automatic",
+          position: 2,
+          icon: "heart",
+          user_field: null,
+        },
+        {
+          id: 3,
+          name: "topic_count",
+          type: "automatic",
+          position: 3,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 4,
+          name: "post_count",
+          type: "automatic",
+          position: 4,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 5,
+          name: "topics_entered",
+          type: "automatic",
+          position: 5,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 6,
+          name: "posts_read",
+          type: "automatic",
+          position: 6,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 7,
+          name: "days_visited",
+          type: "automatic",
+          position: 7,
+          icon: null,
+          user_field: null,
+        },
+        {
+          id: 9,
+          name: "Favorite Color",
+          type: "user_field",
+          position: 8,
+          icon: null,
+          user_field_id: 3,
+        },
+      ],
+    });
   });
 }

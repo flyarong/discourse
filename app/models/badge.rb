@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 
 class Badge < ActiveRecord::Base
+  # TODO: Drop in July 2021
+  self.ignored_columns = %w{image}
+
+  include GlobalPath
+
   # NOTE: These badge ids are not in order! They are grouped logically.
   #       When picking an id, *search* for it.
 
@@ -100,6 +105,7 @@ class Badge < ActiveRecord::Base
 
   belongs_to :badge_type
   belongs_to :badge_grouping
+  belongs_to :image_upload, class_name: 'Upload'
 
   has_many :user_badges, dependent: :destroy
 
@@ -236,13 +242,14 @@ class Badge < ActiveRecord::Base
   end
 
   def default_icon=(val)
-    unless self.image
+    if self.image_upload_id.blank?
       self.icon ||= val
       self.icon = val if self.icon == "fa-certificate"
     end
   end
 
   def default_allow_title=(val)
+    return unless self.new_record?
     self.allow_title ||= val
   end
 
@@ -293,6 +300,16 @@ class Badge < ActiveRecord::Base
     @i18n_name ||= self.class.i18n_name(name)
   end
 
+  def image_url
+    if image_upload_id.present?
+      upload_cdn_path(image_upload.url)
+    end
+  end
+
+  def for_beginners?
+    id == Welcome || (badge_grouping_id == BadgeGrouping::GettingStarted && id != NewUserOfTheMonth)
+  end
+
   protected
 
   def ensure_not_system
@@ -323,8 +340,8 @@ end
 #  trigger           :integer
 #  show_posts        :boolean          default(FALSE), not null
 #  system            :boolean          default(FALSE), not null
-#  image             :string(255)
 #  long_description  :text
+#  image_upload_id   :integer
 #
 # Indexes
 #

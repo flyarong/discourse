@@ -32,7 +32,7 @@ class PostCreator
   #   skip_jobs               - Don't enqueue jobs when creation succeeds. This is needed if you
   #                             wrap `PostCreator` in a transaction, as the sidekiq jobs could
   #                             dequeue before the commit finishes. If you do this, be sure to
-  #                             call `enqueue_jobs` after the transaction is comitted.
+  #                             call `enqueue_jobs` after the transaction is committed.
   #   hidden_reason_id        - Reason for hiding the post (optional)
   #   skip_validations        - Do not validate any of the content in the post
   #   draft_key               - the key of the draft we are creating (will be deleted on success)
@@ -239,7 +239,13 @@ class PostCreator
       auto_close
     end
 
-    handle_spam if !opts[:import_mode] && (@post || @spam)
+    if !opts[:import_mode]
+      handle_spam if (@spam || @post)
+
+      if !@spam && @post && errors.blank?
+        ReviewablePost.queue_for_review_if_possible(@post, @user)
+      end
+    end
 
     @post
   end
@@ -640,7 +646,6 @@ class PostCreator
                       @topic.id,
                       posted: true,
                       last_read_post_number: @post.post_number,
-                      highest_seen_post_number: @post.post_number,
                       last_posted_at: Time.zone.now)
 
     # assume it took us 5 seconds of reading time to make a post

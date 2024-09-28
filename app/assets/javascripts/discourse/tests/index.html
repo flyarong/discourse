@@ -14,6 +14,7 @@
 
     <link rel="stylesheet" href="{{rootURL}}assets/vendor.css">
     <link rel="stylesheet" href="{{rootURL}}assets/test-support.css">
+    <link rel="stylesheet" href="{{rootURL}}assets/testem.css">
 
     {{content-for "head-footer"}}
     {{content-for "test-head-footer"}}
@@ -25,10 +26,20 @@
         -o-transition: none !important;
         transition: none !important;
       }
+      #ember-testing {
+        background-color: white;
+      }
+      #qunit-fixture {
+        position: absolute;
+        top: -10000px;
+        left: -10000px;
+        width: 1000px;
+        height: 1000px;
+      }
+
     </style>
 
-    {{bootstrap-content-for "locale-script"}}
-    {{bootstrap-content-for "bare-stylesheets"}}
+    <script src="{{rootURL}}assets/test-i18n.js"></script>
   </head>
   <body>
     {{content-for "body"}}
@@ -39,6 +50,7 @@
     <script src="{{rootURL}}assets/test-support.js"></script>
     <script src="{{rootURL}}assets/discourse.js"></script>
     <script src="{{rootURL}}assets/discourse-markdown.js"></script>
+    <script src="{{rootURL}}assets/discourse/tests/core_plugins_tests.js"></script>
     <script src="{{rootURL}}assets/admin.js"></script>
     <script src="{{rootURL}}assets/tests.js"></script>
     <script src="{{rootURL}}assets/scripts/discourse-boot.js"></script>

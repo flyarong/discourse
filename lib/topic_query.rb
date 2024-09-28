@@ -7,6 +7,7 @@
 
 class TopicQuery
   PG_MAX_INT ||= 2147483647
+  DEFAULT_PER_PAGE_COUNT ||= 30
 
   def self.validators
     @validators ||= begin
@@ -331,11 +332,10 @@ class TopicQuery
 
     list = TopicQuery.unread_filter(
       list,
-      user.id,
       staff: user.staff?
     )
 
-    first_unread_pm_at = UserStat.where(user_id: user.id).pluck(:first_unread_pm_at).first
+    first_unread_pm_at = UserStat.where(user_id: user.id).pluck_first(:first_unread_pm_at)
     list = list.where("topics.updated_at >= ?", first_unread_pm_at) if first_unread_pm_at
     create_list(:private_messages, {}, list)
   end
@@ -366,6 +366,14 @@ class TopicQuery
     create_list(:private_messages, {}, list)
   end
 
+  def list_private_messages_warnings(user)
+    list = private_messages_for(user, :user)
+    list = list.where('topics.subtype = ?', TopicSubtype.moderator_warning)
+    # Exclude official warnings that the user created, instead of received
+    list = list.where('topics.user_id <> ?', user.id)
+    create_list(:private_messages, {}, list)
+  end
+
   def list_category_topic_ids(category)
     query = default_results(category: category.id)
     pinned_ids = query.where('topics.pinned_at IS NOT NULL AND topics.category_id = ?', category.id).limit(nil).order('pinned_at DESC').pluck(:id)
@@ -379,14 +387,20 @@ class TopicQuery
     end
   end
 
-  def self.new_filter(list, treat_as_new_topic_start_date)
-    list.where("topics.created_at >= :created_at", created_at: treat_as_new_topic_start_date)
+  def self.new_filter(list, treat_as_new_topic_start_date: nil, treat_as_new_topic_clause_sql: nil)
+    if treat_as_new_topic_start_date
+      list = list.where("topics.created_at >= :created_at", created_at: treat_as_new_topic_start_date)
+    else
+      list = list.where("topics.created_at >= #{treat_as_new_topic_clause_sql}")
+    end
+
+    list
       .where("tu.last_read_post_number IS NULL")
       .where("COALESCE(tu.notification_level, :tracking) >= :tracking", tracking: TopicUser.notification_levels[:tracking])
   end
 
-  def self.unread_filter(list, user_id, opts)
-    col_name = opts[:staff] ? "highest_staff_post_number" : "highest_post_number"
+  def self.unread_filter(list, staff: false)
+    col_name = staff ? "highest_staff_post_number" : "highest_post_number"
 
     list
       .where("tu.last_read_post_number < topics.#{col_name}")
@@ -516,7 +530,6 @@ class TopicQuery
   def unread_results(options = {})
     result = TopicQuery.unread_filter(
         default_results(options.reverse_merge(unordered: true)),
-        @user&.id,
         staff: @user&.staff?)
       .order('CASE WHEN topics.user_id = tu.user_id THEN 1 ELSE 2 END')
 
@@ -547,7 +560,10 @@ class TopicQuery
   def new_results(options = {})
     # TODO does this make sense or should it be ordered on created_at
     #  it is ordering on bumped_at now
-    result = TopicQuery.new_filter(default_results(options.reverse_merge(unordered: true)), @user.user_option.treat_as_new_topic_start_date)
+    result = TopicQuery.new_filter(
+      default_results(options.reverse_merge(unordered: true)),
+      treat_as_new_topic_start_date: @user.user_option.treat_as_new_topic_start_date
+    )
     result = remove_muted_topics(result, @user)
     result = remove_muted_categories(result, @user, exclude: options[:category])
     result = remove_muted_tags(result, @user, options)
@@ -563,14 +579,15 @@ class TopicQuery
   protected
 
   def per_page_setting
-    30
+    DEFAULT_PER_PAGE_COUNT
   end
 
   def private_messages_for(user, type)
     options = @options
     options.reverse_merge!(per_page: per_page_setting)
 
-    result = Topic.includes(:tags, :allowed_users)
+    result = Topic.includes(:allowed_users)
+    result = result.includes(:tags) if SiteSetting.tagging_enabled
 
     if type == :group
       result = result.joins(
@@ -687,7 +704,7 @@ class TopicQuery
   # Create results based on a bunch of default options
   def default_results(options = {})
     options.reverse_merge!(@options)
-    options.reverse_merge!(per_page: per_page_setting)
+    options.reverse_merge!(per_page: per_page_setting) unless options[:limit] == false
 
     # Whether to return visible topics
     options[:visible] = true if @user.nil? || @user.regular?
@@ -979,14 +996,16 @@ class TopicQuery
 
   def new_messages(params)
     TopicQuery
-      .new_filter(messages_for_groups_or_user(params[:my_group_ids]), Time.at(SiteSetting.min_new_topics_time).to_datetime)
+      .new_filter(
+        messages_for_groups_or_user(params[:my_group_ids]),
+        treat_as_new_topic_start_date: Time.at(SiteSetting.min_new_topics_time).to_datetime
+      )
       .limit(params[:count])
   end
 
   def unread_messages(params)
     query = TopicQuery.unread_filter(
       messages_for_groups_or_user(params[:my_group_ids]),
-      @user.id,
       staff: @user.staff?
     )
 
@@ -994,7 +1013,7 @@ class TopicQuery
       if params[:my_group_ids].present?
         GroupUser.where(user_id: @user.id, group_id: params[:my_group_ids]).minimum(:first_unread_pm_at)
       else
-        UserStat.where(user_id: @user.id).pluck(:first_unread_pm_at).first
+        UserStat.where(user_id: @user.id).pluck_first(:first_unread_pm_at)
       end
 
     query = query.where("topics.updated_at >= ?", first_unread_pm_at) if first_unread_pm_at

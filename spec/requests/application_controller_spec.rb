@@ -260,7 +260,7 @@ RSpec.describe ApplicationController do
       if (log.include? 'exception app middleware')
         # heisentest diagnostics
         puts
-        puts "EXTRA DIAGNOSTICS FOR INTERMITENT TEST FAIL"
+        puts "EXTRA DIAGNOSTICS FOR INTERMITTENT TEST FAIL"
         puts log
         puts ">> action_dispatch.exception"
         ex = request.env['action_dispatch.exception']
@@ -282,9 +282,7 @@ RSpec.describe ApplicationController do
       get "/search/query.json", params: { trem: "misspelled term" }
 
       expect(response.status).to eq(400)
-      expect(response.parsed_body).to eq(
-        "errors" => ["param is missing or the value is empty: term"]
-      )
+      expect(response.parsed_body["errors"].first).to include("param is missing or the value is empty: term")
     end
   end
 
@@ -444,13 +442,13 @@ RSpec.describe ApplicationController do
 
       get "/"
       expect(response.status).to eq(200)
-      expect(controller.theme_ids).to eq([theme.id])
+      expect(controller.theme_id).to eq(theme.id)
 
       theme.update_attribute(:user_selectable, false)
 
       get "/"
       expect(response.status).to eq(200)
-      expect(controller.theme_ids).to eq([SiteSetting.default_theme_id])
+      expect(controller.theme_id).to eq(SiteSetting.default_theme_id)
     end
 
     it "can be overridden with a cookie" do
@@ -460,15 +458,7 @@ RSpec.describe ApplicationController do
 
       get "/"
       expect(response.status).to eq(200)
-      expect(controller.theme_ids).to eq([theme2.id])
-
-      theme2.update!(user_selectable: false, component: true)
-      theme.add_relative_theme!(:child, theme2)
-      cookies['theme_ids'] = "#{theme.id},#{theme2.id}|#{user.user_option.theme_key_seq}"
-
-      get "/"
-      expect(response.status).to eq(200)
-      expect(controller.theme_ids).to eq([theme.id, theme2.id])
+      expect(controller.theme_id).to eq(theme2.id)
     end
 
     it "falls back to the default theme when the user has no cookies or preferences" do
@@ -478,25 +468,25 @@ RSpec.describe ApplicationController do
 
       get "/"
       expect(response.status).to eq(200)
-      expect(controller.theme_ids).to eq([theme2.id])
+      expect(controller.theme_id).to eq(theme2.id)
     end
 
     it "can be overridden with preview_theme_id param" do
       sign_in(admin)
-      cookies['theme_ids'] = "#{theme.id},#{theme2.id}|#{admin.user_option.theme_key_seq}"
+      cookies['theme_ids'] = "#{theme.id}|#{admin.user_option.theme_key_seq}"
 
       get "/", params: { preview_theme_id: theme2.id }
       expect(response.status).to eq(200)
-      expect(controller.theme_ids).to eq([theme2.id])
+      expect(controller.theme_id).to eq(theme2.id)
 
       get "/", params: { preview_theme_id: non_selectable_theme.id }
-      expect(controller.theme_ids).to eq([non_selectable_theme.id])
+      expect(controller.theme_id).to eq(non_selectable_theme.id)
     end
 
     it "does not allow non privileged user to preview themes" do
       sign_in(user)
       get "/", params: { preview_theme_id: non_selectable_theme.id }
-      expect(controller.theme_ids).to eq([SiteSetting.default_theme_id])
+      expect(controller.theme_id).to eq(SiteSetting.default_theme_id)
     end
 
     it "cookie can fail back to user if out of sync" do
@@ -505,7 +495,7 @@ RSpec.describe ApplicationController do
 
       get "/"
       expect(response.status).to eq(200)
-      expect(controller.theme_ids).to eq([theme.id])
+      expect(controller.theme_id).to eq(theme.id)
     end
   end
 
@@ -637,6 +627,19 @@ RSpec.describe ApplicationController do
       expect(response.headers).to_not include('Content-Security-Policy-Report-Only')
     end
 
+    it 'when GTM is enabled it adds the same nonce to the policy and the GTM tag' do
+      SiteSetting.content_security_policy = true
+      SiteSetting.gtm_container_id = 'GTM-ABCDEF'
+
+      get '/latest'
+      nonce = ApplicationHelper.google_tag_manager_nonce
+      expect(response.headers).to include('Content-Security-Policy')
+
+      script_src = parse(response.headers['Content-Security-Policy'])['script-src']
+      expect(script_src.to_s).to include(nonce)
+      expect(response.body).to include(nonce)
+    end
+
     def parse(csp_string)
       csp_string.split(';').map do |policy|
         directive, *sources = policy.split
@@ -680,8 +683,6 @@ RSpec.describe ApplicationController do
         RateLimiter.clear_all!
         RateLimiter.enable
       end
-
-      after { RateLimiter.disable }
 
       it "serves a LimitExceeded error in the preferred locale" do
         SiteSetting.max_likes_per_day = 1

@@ -2,7 +2,14 @@
 
 if ENV['COVERAGE']
   require 'simplecov'
-  SimpleCov.start
+  SimpleCov.command_name "#{SimpleCov.command_name} #{ENV['TEST_ENV_NUMBER']}" if ENV['TEST_ENV_NUMBER']
+  SimpleCov.start 'rails' do
+    add_group 'Libraries', /^\/lib\/(?!tasks).*$/
+    add_group 'Scripts', 'script'
+    add_group 'Serializers', 'app/serializers'
+    add_group 'Services', 'app/services'
+    add_group 'Tasks', 'lib/tasks'
+  end
 end
 
 require 'rubygems'
@@ -90,7 +97,7 @@ module TestSetup
   # This is run before each test and before each before_all block
   def self.test_setup(x = nil)
     # TODO not sure about this, we could use a mock redis implementation here:
-    #   this gives us really clean "flush" semantics, howere the side-effect is that
+    #   this gives us really clean "flush" semantics, however the side-effect is that
     #   we are no longer using a clean redis implementation, a preferable solution may
     #   be simply flushing before tests, trouble is that redis may be reused with dev
     #   so that would mean the dev would act weird
@@ -174,6 +181,7 @@ RSpec.configure do |config|
   config.include SiteSettingsHelpers
   config.include SidekiqHelpers
   config.include UploadsHelpers
+  config.include OneboxHelpers
   config.mock_framework = :mocha
   config.order = 'random'
   config.infer_spec_type_from_file_location!
@@ -338,20 +346,6 @@ def global_setting(name, value)
 
   before_next_spec do
     GlobalSetting.reset_s3_cache!
-  end
-end
-
-def set_env(var, value)
-  old = ENV.fetch var, :missing
-
-  ENV[var] = value
-
-  before_next_spec do
-    if old == :missing
-      ENV.delete var
-    else
-      ENV[var] = old
-    end
   end
 end
 

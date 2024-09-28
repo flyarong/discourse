@@ -62,7 +62,7 @@ function applyOnebox(state, silent) {
 
           let href = attrs[0][1];
 
-          // edge case ... what if this is not http or protocoless?
+          // edge case ... what if this is not http or protocolless?
           if (!/^http|^\/\//i.test(href)) {
             continue;
           }
@@ -81,6 +81,7 @@ function applyOnebox(state, silent) {
               child.type = "html_raw";
               child.content = cached;
               child.inline = true;
+              child.onebox = true;
 
               text.type = "html_raw";
               text.content = "";

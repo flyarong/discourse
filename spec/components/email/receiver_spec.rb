@@ -414,7 +414,7 @@ describe Email::Receiver do
 
     it "handles multiple paragraphs" do
       expect { process(:paragraphs) }.to change { topic.posts.count }
-      expect(topic.posts.last.raw).to eq("Do you like liquorice?\n\nI really like them. One could even say that I am *addicted* to liquorice. Anf if\nyou can mix it up with some anise, then I'm in heaven ;)")
+      expect(topic.posts.last.raw).to eq("Do you like liquorice?\n\nI really like them. One could even say that I am *addicted* to liquorice. And if\nyou can mix it up with some anise, then I'm in heaven ;)")
     end
 
     it "handles invalid from header" do
@@ -530,14 +530,20 @@ describe Email::Receiver do
 
     it "doesn't include the 'elided' part of the original message when always_show_trimmed_content is disabled" do
       SiteSetting.always_show_trimmed_content = false
-      expect { process(:original_message) }.to change { topic.posts.count }.from(1).to(2)
+      expect { process(:original_message) }.to change { topic.posts.count }
       expect(topic.posts.last.raw).to eq("This is a reply :)")
     end
 
     it "adds the 'elided' part of the original message for public replies when always_show_trimmed_content is enabled" do
       SiteSetting.always_show_trimmed_content = true
-      expect { process(:original_message) }.to change { topic.posts.count }.from(1).to(2)
+      expect { process(:original_message) }.to change { topic.posts.count }
       expect(topic.posts.last.raw).to eq("This is a reply :)\n\n<details class='elided'>\n<summary title='Show trimmed content'>&#183;&#183;&#183;</summary>\n\n---Original Message---\nThis part should not be included\n\n</details>")
+    end
+
+    it "doesn't trim the message when trim_incoming_emails is disabled" do
+      SiteSetting.trim_incoming_emails = false
+      expect { process(:original_message) }.to change { topic.posts.count }
+      expect(topic.posts.last.raw).to eq("This is a reply :)\n\n---Original Message---\nThis part should not be included")
     end
 
     it "supports attached images in TEXT part" do
@@ -576,6 +582,19 @@ describe Email::Receiver do
       ![#{upload.original_filename}|#{upload.width}x#{upload.height}](#{upload.short_url})
 
       *After*
+      MD
+    end
+
+    it "gracefully handles malformed images in HTML part" do
+      expect { process(:inline_image_2) }.to change { topic.posts.count }
+
+      post = topic.posts.last
+      upload = post.uploads.last
+
+      expect(post.raw).to eq(<<~MD.chomp)
+      [image:#{'0' * 5000}
+
+      ![#{upload.original_filename}|#{upload.width}x#{upload.height}](#{upload.short_url})
       MD
     end
 
@@ -949,6 +968,144 @@ describe Email::Receiver do
       include_examples "creates topic with forwarded message as quote", :group, "team@bar.com|meat@bar.com"
     end
 
+    context "when a reply is sent to a group's email_username" do
+      let!(:topic) do
+        group.update(email_username: "team@somesmtpaddress.com")
+        process(:email_reply_1)
+        Topic.last
+      end
+
+      it "does not invite the group email_username as a staged user" do
+        process(:email_reply_to_group_email_username)
+        expect(User.find_by_email("team@somesmtpaddress.com")).to eq(nil)
+      end
+
+      it "creates the reply when the sender and referenced messsage id are known" do
+        expect { process(:email_reply_to_group_email_username) }.to change { topic.posts.count }.by(1).and change { Topic.count }.by(0)
+      end
+    end
+
+    context "emailing a group by email_username and following reply flow" do
+      let!(:original_inbound_email_topic) do
+        group.update!(
+          email_username: "team@somesmtpaddress.com",
+          smtp_server: "smtp.test.com",
+          smtp_port: 587,
+          smtp_ssl: true,
+          smtp_enabled: true
+        )
+        process(:email_to_group_email_username_1)
+        Topic.last
+      end
+      fab!(:user_in_group) do
+        u = Fabricate(:user)
+        Fabricate(:group_user, user: u, group: group)
+        u
+      end
+
+      before do
+        NotificationEmailer.enable
+        SiteSetting.disallow_reply_by_email_after_days = 10000
+        Jobs.run_immediately!
+      end
+
+      def reply_as_group_user
+        group_post = PostCreator.create(
+          user_in_group,
+          raw: "Thanks for your request. Please try to restart.",
+          topic_id: original_inbound_email_topic.id
+        )
+        email_log = EmailLog.last
+        [email_log, group_post]
+      end
+
+      it "the inbound processed email creates an incoming email and topic record correctly, and adds the group to the topic" do
+        incoming = IncomingEmail.find_by(topic: original_inbound_email_topic)
+        user = User.find_by_email("two@foo.com")
+        expect(original_inbound_email_topic.topic_allowed_users.first.user_id).to eq(user.id)
+        expect(original_inbound_email_topic.topic_allowed_groups.first.group_id).to eq(group.id)
+        expect(incoming.to_addresses).to eq("team@somesmtpaddress.com")
+        expect(incoming.from_address).to eq("two@foo.com")
+        expect(incoming.message_id).to eq("u4w8c9r4y984yh98r3h69873@foo.bar.mail")
+      end
+
+      it "creates an EmailLog when someone from the group replies, and does not create an IncomingEmail record for the reply" do
+        email_log, group_post = reply_as_group_user
+        expect(email_log.message_id).to eq("topic/#{original_inbound_email_topic.id}/#{group_post.id}@test.localhost")
+        expect(email_log.to_address).to eq("two@foo.com")
+        expect(email_log.email_type).to eq("user_private_message")
+        expect(email_log.post_id).to eq(group_post.id)
+        expect(IncomingEmail.exists?(post_id: group_post.id)).to eq(false)
+      end
+
+      it "processes a reply from the OP user to the group SMTP username, linking the reply_to_post_number correctly by
+      matching in_reply_to to the email log" do
+        email_log, group_post = reply_as_group_user
+
+        reply_email = email(:email_to_group_email_username_2)
+        reply_email.gsub!("MESSAGE_ID_REPLY_TO", email_log.message_id)
+        expect do
+          Email::Receiver.new(reply_email).process!
+        end.to change { Topic.count }.by(0).and change { Post.count }.by(1)
+
+        reply_post = Post.last
+        expect(reply_post.reply_to_user).to eq(user_in_group)
+        expect(reply_post.reply_to_post_number).to eq(group_post.post_number)
+      end
+
+      it "processes the reply from the user as a brand new topic if they have replied from a different address (e.g. auto forward) and allow_unknown_sender_topic_replies is disabled" do
+        email_log, group_post = reply_as_group_user
+
+        reply_email = email(:email_to_group_email_username_2_as_unknown_sender)
+        reply_email.gsub!("MESSAGE_ID_REPLY_TO", email_log.message_id)
+        expect do
+          Email::Receiver.new(reply_email).process!
+        end.to change { Topic.count }.by(1).and change { Post.count }.by(1)
+
+        reply_post = Post.last
+        expect(reply_post.topic_id).not_to eq(original_inbound_email_topic.id)
+      end
+
+      it "processes the reply from the user as a reply if they have replied from a different address (e.g. auto forward) and allow_unknown_sender_topic_replies is enabled" do
+        group.update!(allow_unknown_sender_topic_replies: true)
+        email_log, group_post = reply_as_group_user
+
+        reply_email = email(:email_to_group_email_username_2_as_unknown_sender)
+        reply_email.gsub!("MESSAGE_ID_REPLY_TO", email_log.message_id)
+        expect do
+          Email::Receiver.new(reply_email).process!
+        end.to change { Topic.count }.by(0).and change { Post.count }.by(1)
+
+        reply_post = Post.last
+        expect(reply_post.topic_id).to eq(original_inbound_email_topic.id)
+      end
+
+      it "creates a new topic with a reference back to the original if replying to a too old topic" do
+        SiteSetting.disallow_reply_by_email_after_days = 2
+        email_log, group_post = reply_as_group_user
+
+        group_post.update(created_at: 10.days.ago)
+        group_post.topic.update(created_at: 10.days.ago)
+
+        reply_email = email(:email_to_group_email_username_2)
+        reply_email.gsub!("MESSAGE_ID_REPLY_TO", email_log.message_id)
+        expect do
+          Email::Receiver.new(reply_email).process!
+        end.to change { Topic.count }.by(1).and change { Post.count }.by(1)
+
+        reply_post = Post.last
+        new_topic = Topic.last
+
+        expect(reply_post.topic).to eq(new_topic)
+        expect(reply_post.raw).to include(
+          I18n.t(
+            "emails.incoming.continuing_old_discussion",
+            url: group_post.topic.url, title: group_post.topic.title, count: SiteSetting.disallow_reply_by_email_after_days
+          )
+        )
+      end
+    end
+
     context "when message sent to a group has no key and find_related_post_with_key is enabled" do
       let!(:topic) do
         process(:email_reply_1)
@@ -1148,7 +1305,7 @@ describe Email::Receiver do
       SiteSetting.alternative_reply_by_email_addresses = nil
     end
 
-    it "it maches nothing if there is not reply_by_email_address" do
+    it "it matches nothing if there is not reply_by_email_address" do
       expect(Email::Receiver.reply_by_email_address_regex).to eq(/$a/)
     end
 
@@ -1347,7 +1504,7 @@ describe Email::Receiver do
           SiteSetting.forwarded_emails_behaviour = "create_replies"
         end
 
-        context "when a reply contains a forwareded email" do
+        context "when a reply contains a forwarded email" do
           include_examples "does not create staged users", :reply_and_forwarded
         end
 

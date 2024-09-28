@@ -35,6 +35,7 @@
   &.no-text {
     .d-icon {
       margin-right: 0;
+      min-height: 17px;
     }
   }
   @include hover {
@@ -161,19 +162,14 @@
 // Social buttons
 // --------------------------------------------------
 
-.btn-social,
-.login-with-email-button {
-  border-radius: 0.25em;
+.btn-social {
   color: #000;
-  background: #ffffff;
+  background: #fff;
   border: 1px solid transparent;
-  &:hover {
-    color: #000 !important;
-    background: #ececec !important;
-    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.25);
-    .d-icon {
-      color: inherit !important;
-    }
+  &:hover,
+  &:focus {
+    box-shadow: shadow("card");
+    outline: 1px solid #000;
   }
   &[href] {
     color: var(--secondary);
@@ -269,6 +265,9 @@
   line-height: $line-height-small;
 }
 
+// Bonus Buttons
+// --------------------------------------------------
+
 .btn-flat {
   background: transparent;
   border: 0;
@@ -297,6 +296,14 @@
       }
     }
   }
+
+  &:focus {
+    outline: none;
+    background: var(--primary-low);
+    .d-icon {
+      color: var(--primary);
+    }
+  }
 }
 
 .btn-link {
@@ -304,4 +311,23 @@
   border: 0;
   padding: 0;
   color: var(--tertiary);
+}
+
+.btn-mini-toggle {
+  padding: 0.4em 0.467em;
+  .d-icon {
+    color: var(--primary-high);
+  }
+  @include hover {
+    background: transparent;
+    .d-icon {
+      color: var(--primary);
+    }
+  }
+  &:focus {
+    background: var(--primary-low);
+    .d-icon {
+      color: var(--primary);
+    }
+  }
 }

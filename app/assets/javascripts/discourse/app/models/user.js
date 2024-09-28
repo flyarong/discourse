@@ -59,6 +59,7 @@ let userFields = [
   "watching_first_post_tags",
   "date_of_birth",
   "primary_group_id",
+  "flair_group_id",
   "user_notification_schedule",
 ];
 
@@ -229,7 +230,7 @@ const User = RestModel.extend({
     const allowedUsers = details && details.get("allowed_users");
     const groups = details && details.get("allowed_groups");
 
-    // directly targetted so go to inbox
+    // directly targeted so go to inbox
     if (!groups || (allowedUsers && allowedUsers.findBy("id", userId))) {
       return userPath(`${username}/messages`);
     } else {
@@ -416,8 +417,11 @@ const User = RestModel.extend({
       type: "DELETE",
       data: { email },
     }).then(() => {
-      this.secondary_emails.removeObject(email);
-      this.unconfirmed_emails.removeObject(email);
+      if (this.unconfirmed_emails.includes(email)) {
+        this.unconfirmed_emails.removeObject(email);
+      } else {
+        this.secondary_emails.removeObject(email);
+      }
     });
   },
 
@@ -521,27 +525,23 @@ const User = RestModel.extend({
 
   loadUserAction(id) {
     const stream = this.stream;
-    return ajax(`/user_actions/${id}.json`, { cache: "false" }).then(
-      (result) => {
-        if (result && result.user_action) {
-          const ua = result.user_action;
+    return ajax(`/user_actions/${id}.json`).then((result) => {
+      if (result && result.user_action) {
+        const ua = result.user_action;
 
-          if (
-            (this.get("stream.filter") || ua.action_type) !== ua.action_type
-          ) {
-            return;
-          }
-          if (!this.get("stream.filter") && !this.inAllStream(ua)) {
-            return;
-          }
-
-          ua.title = emojiUnescape(escapeExpression(ua.title));
-          const action = UserAction.collapseStream([UserAction.create(ua)]);
-          stream.set("itemsLoaded", stream.get("itemsLoaded") + 1);
-          stream.get("content").insertAt(0, action[0]);
+        if ((this.get("stream.filter") || ua.action_type) !== ua.action_type) {
+          return;
         }
+        if (!this.get("stream.filter") && !this.inAllStream(ua)) {
+          return;
+        }
+
+        ua.title = emojiUnescape(escapeExpression(ua.title));
+        const action = UserAction.collapseStream([UserAction.create(ua)]);
+        stream.set("itemsLoaded", stream.get("itemsLoaded") + 1);
+        stream.get("content").insertAt(0, action[0]);
       }
-    );
+    });
   },
 
   inAllStream(ua) {
@@ -864,7 +864,7 @@ const User = RestModel.extend({
 
   @discourseComputed("groups.@each.title", "badges.[]")
   availableTitles() {
-    let titles = [];
+    const titles = [];
 
     (this.groups || []).forEach((group) => {
       if (get(group, "title")) {
@@ -887,6 +887,27 @@ const User = RestModel.extend({
           id: title,
         };
       });
+  },
+
+  @discourseComputed("groups.[]")
+  availableFlairs() {
+    const flairs = [];
+
+    if (this.groups) {
+      this.groups.forEach((group) => {
+        if (group.flair_url) {
+          flairs.push({
+            id: group.id,
+            name: group.name,
+            url: group.flair_url,
+            bgColor: group.flair_bg_color,
+            color: group.flair_color,
+          });
+        }
+      });
+    }
+
+    return flairs;
   },
 
   @discourseComputed("user_option.text_size_seq", "user_option.text_size")
@@ -1042,6 +1063,10 @@ User.reopenClass(Singleton, {
     return ajax(userPath("check_username"), {
       data: { username, email, for_user_id },
     });
+  },
+
+  checkEmail(email) {
+    return ajax(userPath("check_email"), { data: { email } });
   },
 
   groupStats(stats) {

@@ -2,8 +2,6 @@ div.poll {
   margin: 1em 0;
   border: 1px solid var(--primary-low);
 
-  @include unselectable;
-
   ul,
   ol {
     margin: 0;
@@ -25,9 +23,14 @@ div.poll {
   }
 
   img {
-    // needed to override internal styles in image-sizing hack
-    max-width: 100% !important;
-    height: auto;
+    // Hacky way to stop images without width/height
+    // from causing abrupt unintended scrolling
+    &:not([width]):not(.emoji),
+    &:not([height]):not(.emoji) {
+      width: 200px !important;
+      height: 200px !important;
+      object-fit: contain;
+    }
   }
 
   .poll-info {
@@ -161,9 +164,6 @@ div.poll {
 div.poll.pie {
   .poll-container {
     display: inline-block;
-    height: 340px;
-    max-height: 340px;
-    overflow-y: auto;
   }
   .poll-info {
     display: inline-block;

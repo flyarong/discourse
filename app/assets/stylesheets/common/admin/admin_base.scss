@@ -13,9 +13,6 @@ $mobile-breakpoint: 700px;
   height: auto;
   overflow: hidden;
   height: 100%;
-  .mobile-view & {
-    margin-top: 10px;
-  }
   @include breakpoint(tablet) {
     width: calc(100% + 10px);
     margin-left: -10px;
@@ -27,6 +24,7 @@ $mobile-breakpoint: 700px;
     flex-wrap: wrap;
     width: calc(100% - 10px);
     flex: 1 0 auto;
+    margin-top: 0;
     @include breakpoint(tablet) {
       white-space: nowrap;
       flex-wrap: nowrap;
@@ -426,6 +424,9 @@ $mobile-breakpoint: 700px;
   }
   .controls {
     @include clearfix;
+  }
+  .users-list-container {
+    overflow-x: auto;
   }
 }
 
@@ -882,6 +883,47 @@ table#user-badges {
   .values {
     margin-bottom: 0.5em;
   }
+}
+
+.emoji-value-list {
+  margin-left: 0;
+
+  .emoji-details {
+    display: flex;
+    align-items: center;
+    min-height: 30px;
+    padding: $input-padding;
+    line-height: 1;
+    color: var(--primary);
+    border: 1px solid var(--primary-low);
+
+    .emoji-name {
+      margin-left: 0.5em;
+    }
+
+    &:not(.can-edit) {
+      pointer-events: none;
+      background-color: var(--primary-very-low);
+    }
+  }
+
+  .value-input {
+    flex-direction: row;
+  }
+}
+
+.value .add-emoji-button {
+  display: block;
+  background-color: var(--primary-low);
+  border: none;
+}
+
+.value .add-value-btn,
+.shift-up-value-btn,
+.shift-down-value-btn {
+  @include value-btn;
+  margin-right: 0 !important;
+  margin-left: 0.25em;
 }
 
 .secret-value-list {

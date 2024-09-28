@@ -144,6 +144,19 @@ describe SearchIndexer do
         .to change { post.reload.post_search_data.search_data }
     end
 
+    it 'should work with invalid HTML' do
+      post.update!(cooked: "<FD>" * Nokogumbo::DEFAULT_MAX_TREE_DEPTH)
+
+      SearchIndexer.update_posts_index(
+        post_id: post.id,
+        topic_title: post.topic.title,
+        category_name: post.topic.category&.name,
+        topic_tags: post.topic.tags.map(&:name).join(' '),
+        cooked: post.cooked,
+        private_message: post.topic.private_message?
+      )
+    end
+
     it 'should not index posts with empty raw' do
       expect do
         post = Fabricate.build(:post, raw: "", post_type: Post.types[:small_action])
@@ -189,7 +202,7 @@ describe SearchIndexer do
 
       post = Fabricate(:post, topic: topic, raw: <<~RAW)
       a https://abc.com?bob=1, http://efg.com.au?bill=1 b hij.net/xyz=1
-      www.klm.net/?IGNORE=1 <a href="http://abc.de.nop.co.uk?IGNORE=1&ingore2=2">test</a>
+      www.klm.net/?IGNORE=1 <a href="http://abc.de.nop.co.uk?IGNORE=1&ignore2=2">test</a>
       RAW
 
       post.rebake!
@@ -228,7 +241,7 @@ describe SearchIndexer do
       post.rebake!
       post.reload
 
-      expect(post.cooked).to include(
+      expect(post.cooked).not_to include(
         CookedPostProcessor::LIGHTBOX_WRAPPER_CSS_CLASS
       )
 
@@ -276,6 +289,25 @@ describe SearchIndexer do
 
       expect(post2.reload.post_search_data.version).to eq(
         SearchIndexer::POST_INDEX_VERSION
+      )
+    end
+  end
+
+  describe '.queue_users_reindex' do
+    let!(:user) { Fabricate(:user) }
+    let!(:user2) { Fabricate(:user) }
+
+    it 'should reset the version of search data for all users' do
+      SearchIndexer.index(user, force: true)
+      SearchIndexer.index(user2, force: true)
+      SearchIndexer.queue_users_reindex([user.id])
+
+      expect(user.reload.user_search_data.version).to eq(
+        SearchIndexer::REINDEX_VERSION
+      )
+
+      expect(user2.reload.user_search_data.version).to eq(
+        SearchIndexer::USER_INDEX_VERSION
       )
     end
   end

@@ -27,7 +27,7 @@
     display: flex;
     flex-wrap: wrap;
     width: 100%;
-    margin: 0.5em 0 0;
+    margin: 0;
 
     button {
       &.select-kit-header {
@@ -36,10 +36,6 @@
         flex: 1 1 auto;
       }
     }
-  }
-
-  .navigation-controls {
-    margin-bottom: 0.667em;
   }
 
   .nav-pills {
@@ -160,7 +156,6 @@ ol.category-breadcrumb {
   }
 
   .category-topic-link td.num .badge-notification {
-    &.new-posts,
     &.unread-posts {
       color: var(--secondary);
     }
@@ -378,7 +373,7 @@ tr.category-topic-link {
   padding: 0.5em 0 0.25em;
   border-top: 1px solid var(--primary-low) !important;
   border-bottom: 1px solid var(--primary-low) !important;
-  margin-bottom: 2em;
+  margin: 1em 0 2em;
 }
 
 .category-box {
@@ -410,25 +405,23 @@ tr.category-topic-link {
   opacity: 1;
 }
 
-.tags-controls {
-  display: flex;
-  h2 {
-    order: -1;
-    margin-right: auto;
+.category-heading {
+  p {
+    font-size: $font-up-1;
+    margin-bottom: 0.75em;
   }
 }
 
 .category-logo.aspect-image {
   display: block;
-  margin: 8px 0;
-
+  margin: 1.5em 0 1em;
   img {
     max-width: 100%;
   }
 }
 
 button.dismiss-read {
-  margin-right: 10px;
+  margin-bottom: 10px;
 }
 
 // base defines extra padding for easier click/top of title field
@@ -442,8 +435,12 @@ td .main-link {
   }
 }
 .topic-list {
-  .posts-map {
-    font-size: $font-up-1;
+  .num.posts-map button {
+    font-size: $font-up-2;
+    padding: 0;
+  }
+  .num.activity a {
+    padding: 0;
   }
   // so the topic excerpt is full width
   // as the containing div is 80%

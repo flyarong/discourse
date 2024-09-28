@@ -71,6 +71,16 @@ describe Badge do
     end
   end
 
+  describe '#image_url' do
+    it 'has CDN url' do
+      SiteSetting.enable_s3_uploads = true
+      SiteSetting.s3_cdn_url = "https://some-s3-cdn.amzn.com"
+      upload = Fabricate(:upload_s3)
+      badge = Fabricate(:badge, image_upload_id: upload.id)
+      expect(badge.image_url).to start_with("https://some-s3-cdn.amzn.com")
+    end
+  end
+
   describe '.i18n_name' do
     it 'transforms to lower case letters, and replaces spaces with underscores' do
       expect(Badge.i18n_name('Basic User')).to eq('basic_user')
@@ -201,6 +211,20 @@ describe Badge do
       TopicLinkClick.create_from(url: "https://www.discourse.org/", post_id: post.id, topic_id: post.topic.id, ip: "192.168.0.101")
       BadgeGranter.backfill(popular_link_badge)
       expect(UserBadge.where(user_id: post.user.id, badge_id: Badge::PopularLink).count).to eq(0)
+    end
+  end
+
+  context "#seed" do
+
+    let(:regular_badge) do
+      Badge.find(Badge::Regular)
+    end
+
+    it "`allow_title` is not updated for existing records" do
+      regular_badge.update(allow_title: false)
+      SeedFu.seed
+      regular_badge.reload
+      expect(regular_badge.allow_title).to eq(false)
     end
   end
 end

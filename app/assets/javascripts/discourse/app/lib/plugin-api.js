@@ -1,6 +1,7 @@
 import ComposerEditor, {
   addComposerUploadHandler,
   addComposerUploadMarkdownResolver,
+  addComposerUploadProcessor,
 } from "discourse/components/composer-editor";
 import { addButton, removeButton } from "discourse/widgets/post-menu";
 import {
@@ -51,6 +52,7 @@ import { addPostSmallActionIcon } from "discourse/widgets/post-small-action";
 import { addQuickAccessProfileItem } from "discourse/widgets/quick-access-profile";
 import { addTagsHtmlCallback } from "discourse/lib/render-tags";
 import { addToolbarCallback } from "discourse/components/d-editor";
+import { addTopicParticipantClassesCallback } from "discourse/widgets/topic-map";
 import { addTopicTitleDecorator } from "discourse/components/topic-title";
 import { addUserMenuGlyph } from "discourse/widgets/user-menu";
 import { addUsernameSelectorDecorator } from "discourse/helpers/decorate-username-selector";
@@ -70,9 +72,11 @@ import { registerTopicFooterButton } from "discourse/lib/register-topic-footer-b
 import { replaceFormatter } from "discourse/lib/utilities";
 import { replaceTagRenderer } from "discourse/lib/render-tag";
 import { setNewCategoryDefaultColors } from "discourse/routes/new-category";
+import { addSearchResultsCallback } from "discourse/lib/search";
+import { addInSearchShortcut } from "discourse/widgets/search-menu-results";
 
 // If you add any methods to the API ensure you bump up this number
-const PLUGIN_API_VERSION = "0.11.2";
+const PLUGIN_API_VERSION = "0.11.6";
 
 class PluginApi {
   constructor(version, container) {
@@ -756,10 +760,22 @@ class PluginApi {
    *
    * Example:
    *
-   * addPostClassesCallback((atts) => {if (atts.post_number == 1) return ["first"];})
+   * addPostClassesCallback((attrs) => {if (attrs.post_number == 1) return ["first"];})
    **/
   addPostClassesCallback(callback) {
     addPostClassesCallback(callback);
+  }
+
+  /**
+   * Adds a callback to be called before rendering a topic participant that
+   * that returns custom classes to add to the participant element
+   *
+   * Example:
+   *
+   * addTopicParticipantClassesCallback((attrs) => {if (attrs.primary_group_name == "moderator") return ["important-participant"];})
+   **/
+  addTopicParticipantClassesCallback(callback) {
+    addTopicParticipantClassesCallback(callback);
   }
 
   /**
@@ -931,6 +947,29 @@ class PluginApi {
    */
   addComposerUploadHandler(extensions, method) {
     addComposerUploadHandler(extensions, method);
+  }
+
+  /**
+   * Registers a pre-processor for file uploads
+   * See https://github.com/blueimp/jQuery-File-Upload/wiki/Options#file-processing-options
+   *
+   * Useful for transforming to-be uploaded files client-side
+   *
+   * Example:
+   *
+   * api.addComposerUploadProcessor({action: 'myFileTransformation'}, {
+   *    myFileTransformation: function (data, options) {
+   *      let p = new Promise((resolve, reject) => {
+   *        let file = data.files[data.index];
+   *        console.log(`Transforming ${file.name}`);
+   *        // do work...
+   *        resolve(data);
+   *      });
+   *      return p;
+   * });
+   */
+  addComposerUploadProcessor(queueItem, actionItem) {
+    addComposerUploadProcessor(queueItem, actionItem);
   }
 
   /**
@@ -1241,6 +1280,33 @@ class PluginApi {
    **/
   setNewCategoryDefaultColors(backgroundColor, textColor) {
     setNewCategoryDefaultColors(backgroundColor, textColor);
+  }
+
+  /**
+   * Add a callback to modify search results before displaying them.
+   *
+   * ```
+   * api.addSearchResultsCallback((results) => {
+   *   results.topics.push(Topic.create({ ... }));
+   *   return results;
+   * });
+   * ```
+   *
+   */
+  addSearchResultsCallback(callback) {
+    addSearchResultsCallback(callback);
+  }
+
+  /**
+   * Add a in: shortcut to search menu panel.
+   *
+   * ```
+   * addInSearchShortcut("in:assigned");
+   * ```
+   *
+   */
+  addInSearchShortcut(value) {
+    addInSearchShortcut(value);
   }
 }
 

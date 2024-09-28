@@ -241,7 +241,7 @@ describe Post do
     let(:post_one_image) { post_with_body("![sherlock](http://bbc.co.uk/sherlock.jpg)", newuser) }
     let(:post_two_images) { post_with_body("<img src='http://discourse.org/logo.png'> <img src='http://bbc.co.uk/sherlock.jpg'>", newuser) }
     let(:post_with_avatars) { post_with_body('<img alt="smiley" title=":smiley:" src="/assets/emoji/smiley.png" class="avatar"> <img alt="wink" title=":wink:" src="/assets/emoji/wink.png" class="avatar">', newuser) }
-    let(:post_with_favicon) { post_with_body('<img src="/assets/favicons/wikipedia.png" class="favicon">', newuser) }
+    let(:post_with_favicon) { post_with_body('<img src="/images/favicons/discourse.png" class="favicon">', newuser) }
     let(:post_image_within_quote) { post_with_body('[quote]<img src="coolimage.png">[/quote]', newuser) }
     let(:post_image_within_code) { post_with_body('<code><img src="coolimage.png"></code>', newuser) }
     let(:post_image_within_pre) { post_with_body('<pre><img src="coolimage.png"></pre>', newuser) }
@@ -692,7 +692,7 @@ describe Post do
 
     end
 
-    describe 'ninja editing & edit windows' do
+    describe 'grace period editing & edit windows' do
 
       before { SiteSetting.editing_grace_period = 1.minute.to_i }
 
@@ -700,7 +700,7 @@ describe Post do
         revised_at = post.updated_at + 2.minutes
         new_revised_at = revised_at + 2.minutes
 
-        # ninja edit
+        # grace period edit
         post.revise(post.user, { raw: 'updated body' }, revised_at: post.updated_at + 10.seconds)
         post.reload
         expect(post.version).to eq(1)
@@ -760,7 +760,7 @@ describe Post do
 
       context 'second poster posts again quickly' do
 
-        it 'is a ninja edit, because the second poster posted again quickly' do
+        it 'is a grace period edit, because the second poster posted again quickly' do
           SiteSetting.editing_grace_period = 1.minute.to_i
           post.revise(changed_by, { raw: 'yet another updated body' }, revised_at: post.updated_at + 10.seconds)
           post.reload
@@ -1481,6 +1481,8 @@ describe Post do
       end
 
       before do
+        Jobs.run_immediately!
+
         setup_s3
         SiteSetting.authorized_extensions = "pdf|png|jpg|csv"
         SiteSetting.secure_media = true
@@ -1736,7 +1738,9 @@ describe Post do
         version: post.version
       }
 
-      MessageBus.expects(:publish).with("/topic/#{topic.id}", message, user_ids: [user1.id, user2.id, user3.id]).once
+      MessageBus.expects(:publish).once.with("/topic/#{topic.id}", message, is_a(Hash)) do |_, _, options|
+        options[:user_ids].sort == [user1.id, user2.id, user3.id].sort
+      end
       post.publish_change_to_clients!(:created)
     end
   end

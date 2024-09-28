@@ -48,12 +48,16 @@ after_initialize do
     '../lib/discourse_narrative_bot/welcome_post_type_site_setting.rb'
   ].each { |path| load File.expand_path(path, __FILE__) }
 
-  # Disable welcome message because that is what the bot is supposed to replace.
-  SiteSetting.send_welcome_message = false if SiteSetting.send_welcome_message
+  RailsMultisite::ConnectionManagement.safe_each_connection do
+    if SiteSetting.discourse_narrative_bot_enabled
+      # Disable welcome message because that is what the bot is supposed to replace.
+      SiteSetting.send_welcome_message = false
 
-  certificate_path = "#{Discourse.base_url}/discobot/certificate.svg"
-  if SiteSetting.discourse_narrative_bot_enabled && !SiteSetting.allowed_iframes.include?(certificate_path)
-    SiteSetting.allowed_iframes = SiteSetting.allowed_iframes.split('|').append("#{Discourse.base_url}/discobot/certificate.svg").join('|')
+      certificate_path = "#{Discourse.base_url}/discobot/certificate.svg"
+      if !SiteSetting.allowed_iframes.include?(certificate_path)
+        SiteSetting.allowed_iframes = SiteSetting.allowed_iframes.split('|').append(certificate_path).join('|')
+      end
+    end
   end
 
   require_dependency 'plugin_store'
@@ -93,7 +97,11 @@ after_initialize do
           raise Discourse::InvalidParameters.new("#{key} must be present") unless params[key]&.present?
         end
 
-        rate_limiter = RateLimiter.new(current_user, 'svg_certificate', 3, 1.minute)
+        if params[:user_id].to_i != current_user.id
+          rate_limiter = RateLimiter.new(current_user, 'svg_certificate', 3, 1.minute)
+        else
+          rate_limiter = RateLimiter.new(current_user, 'svg_certificate_self', 30, 10.minutes)
+        end
         rate_limiter.performed! unless current_user.staff?
 
         user = User.find_by(id: params[:user_id])
@@ -159,7 +167,7 @@ after_initialize do
 
     case SiteSetting.discourse_narrative_bot_welcome_post_type
     when 'new_user_track'
-      if enqueue_narrative_bot_job?
+      if enqueue_narrative_bot_job? && !manually_disabled_discobot?
         Jobs.enqueue_in(delay, :narrative_init,
           user_id: self.id,
           klass: DiscourseNarrativeBot::NewUserNarrative.to_s
@@ -170,12 +178,15 @@ after_initialize do
     end
   end
 
+  self.add_to_class(:user, :manually_disabled_discobot?) do
+    user_option&.skip_new_user_tips
+  end
+
   self.add_to_class(:user, :enqueue_narrative_bot_job?) do
     SiteSetting.discourse_narrative_bot_enabled &&
       self.human? &&
       !self.anonymous? &&
       !self.staged &&
-      !user_option&.skip_new_user_tips &&
       !SiteSetting.discourse_narrative_bot_ignored_usernames.split('|'.freeze).include?(self.username)
   end
 
@@ -185,7 +196,7 @@ after_initialize do
     return if topic_id.blank? || data[:track] != DiscourseNarrativeBot::NewUserNarrative.to_s
 
     topic_user = topic_users.find_by(topic_id: topic_id)
-    return if topic_user.present? && (topic_user.last_read_post_number.present? || topic_user.highest_seen_post_number.present?)
+    return if topic_user.present? && topic_user.last_read_post_number.present?
 
     topic = Topic.find_by(id: topic_id)
     return if topic.blank?
@@ -293,15 +304,17 @@ after_initialize do
   )
 
   self.on(:system_message_sent) do |args|
-    if args[:message_type] == 'tl2_promotion_message' && SiteSetting.discourse_narrative_bot_enabled
+    next if !SiteSetting.discourse_narrative_bot_enabled
+    next if args[:message_type] != 'tl2_promotion_message'
 
+    recipient = args[:post].topic.topic_users.where.not(user_id: args[:post].user_id).last&.user
+    recipient ||= Discourse.site_contact_user if args[:post].user == Discourse.site_contact_user
+    next if recipient.nil?
+
+    I18n.with_locale(recipient.effective_locale) do
       raw = I18n.t("discourse_narrative_bot.tl2_promotion_message.text_body_template",
-                  discobot_username: ::DiscourseNarrativeBot::Base.new.discobot_username,
-                  reset_trigger: "#{::DiscourseNarrativeBot::TrackSelector.reset_trigger} #{::DiscourseNarrativeBot::AdvancedUserNarrative.reset_trigger}")
-
-      recipient = args[:post].topic.topic_users.where.not(user_id: args[:post].user_id).last&.user
-      recipient ||= Discourse.site_contact_user if args[:post].user == Discourse.site_contact_user
-      return if recipient.nil?
+                   discobot_username: ::DiscourseNarrativeBot::Base.new.discobot_username,
+                   reset_trigger: "#{::DiscourseNarrativeBot::TrackSelector.reset_trigger} #{::DiscourseNarrativeBot::AdvancedUserNarrative.reset_trigger}")
 
       PostCreator.create!(
         ::DiscourseNarrativeBot::Base.new.discobot_user,

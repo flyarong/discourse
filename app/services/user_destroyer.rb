@@ -15,7 +15,7 @@ class UserDestroyer
   # Returns a frozen instance of the User if the delete succeeded.
   def destroy(user, opts = {})
     raise Discourse::InvalidParameters.new('user is nil') unless user && user.is_a?(User)
-    raise PostsExistError if !opts[:delete_posts] && user.posts.count != 0
+    raise PostsExistError if !opts[:delete_posts] && user.posts.joins(:topic).count != 0
     @guardian.ensure_can_delete_user!(user)
 
     # default to using a transaction
@@ -85,6 +85,13 @@ class UserDestroyer
           end
         end
 
+        Invite.where(email: user_emails).each do |invite|
+          # invited_users will be removed by dependent destroy association when user is destroyed
+          invite.invited_groups.destroy_all
+          invite.topic_invites.destroy_all
+          invite.destroy
+        end
+
         unless opts[:quiet]
           if @actor == user
             deleted_by = Discourse.system_user
@@ -101,7 +108,7 @@ class UserDestroyer
 
     # After the user is deleted, remove the reviewable
     if reviewable = ReviewableUser.pending.find_by(target: user)
-      reviewable.perform(@actor, :reject_user_delete)
+      reviewable.perform(@actor, :delete_user)
     end
 
     result

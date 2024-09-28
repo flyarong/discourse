@@ -7,6 +7,15 @@ const cleanBaseURL = require("clean-base-url");
 const path = require("path");
 const fs = require("fs");
 
+// via https://stackoverflow.com/a/6248722/165668
+function generateUID() {
+  let firstPart = (Math.random() * 46656) | 0; // eslint-disable-line no-bitwise
+  let secondPart = (Math.random() * 46656) | 0; // eslint-disable-line no-bitwise
+  firstPart = ("000" + firstPart.toString(36)).slice(-3);
+  secondPart = ("000" + secondPart.toString(36)).slice(-3);
+  return firstPart + secondPart;
+}
+
 const IGNORE_PATHS = [
   /\/ember-cli-live-reload\.js$/,
   /\/session\/[^\/]+\/become$/,
@@ -20,34 +29,20 @@ function htmlTag(buffer, bootstrap) {
   buffer.push(`<html lang="${bootstrap.html_lang}"${classList}>`);
 }
 
-function bareStylesheets(buffer, bootstrap) {
-  (bootstrap.stylesheets || []).forEach((s) => {
-    if (s.theme_id) {
-      return;
-    }
-    let attrs = [];
-    if (s.media) {
-      attrs.push(`media="${s.media}"`);
-    }
-    if (s.target) {
-      attrs.push(`data-target="${s.target}"`);
-    }
-    let link = `<link rel="stylesheet" type="text/css" href="${
-      s.href
-    }" ${attrs.join(" ")}></script>\n`;
-    buffer.push(link);
-  });
-}
-
 function head(buffer, bootstrap) {
   if (bootstrap.csrf_token) {
-    buffer.push(`<meta name="csrf-param" buffer="authenticity_token">`);
-    buffer.push(`<meta name="csrf-token" buffer="${bootstrap.csrf_token}">`);
+    buffer.push(`<meta name="csrf-param" content="authenticity_token">`);
+    buffer.push(`<meta name="csrf-token" content="${bootstrap.csrf_token}">`);
   }
-  if (bootstrap.theme_ids) {
+
+  if (bootstrap.theme_id) {
     buffer.push(
-      `<meta name="discourse_theme_ids" buffer="${bootstrap.theme_ids}">`
+      `<meta name="discourse_theme_id" content="${bootstrap.theme_id}">`
     );
+  }
+
+  if (bootstrap.theme_color) {
+    buffer.push(`<meta name="theme-color" content="${bootstrap.theme_color}">`);
   }
 
   let setupData = "";
@@ -75,9 +70,12 @@ function head(buffer, bootstrap) {
     if (s.theme_id) {
       attrs.push(`data-theme-id="${s.theme_id}"`);
     }
+    if (s.class) {
+      attrs.push(`class="${s.class}"`);
+    }
     let link = `<link rel="stylesheet" type="text/css" href="${
       s.href
-    }" ${attrs.join(" ")}></script>\n`;
+    }" ${attrs.join(" ")}>`;
     buffer.push(link);
   });
 
@@ -108,9 +106,14 @@ function body(buffer, bootstrap) {
   buffer.push(bootstrap.html.header);
 }
 
-function bodyFooter(buffer, bootstrap) {
+function bodyFooter(buffer, bootstrap, headers) {
   buffer.push(bootstrap.theme_html.body_tag);
   buffer.push(bootstrap.html.before_body_close);
+
+  let v = generateUID();
+  buffer.push(`
+		<script async type="text/javascript" id="mini-profiler" src="/mini-profiler-resources/includes.js?v=${v}" data-css-url="/mini-profiler-resources/includes.css?v=${v}" data-version="${v}" data-path="/mini-profiler-resources/" data-horizontal-position="left" data-vertical-position="top" data-trivial="false" data-children="false" data-max-traces="20" data-controls="false" data-total-sql-count="false" data-authorized="true" data-toggle-shortcut="alt+p" data-start-hidden="false" data-collapse-results="true" data-html-container="body" data-hidden-custom-fields="x" data-ids="${headers["x-miniprofiler-ids"]}"></script>
+	`);
 }
 
 function hiddenLoginForm(buffer, bootstrap) {
@@ -137,47 +140,108 @@ function preloaded(buffer, bootstrap) {
 const BUILDERS = {
   "html-tag": htmlTag,
   "before-script-load": beforeScriptLoad,
-  head: head,
-  body: body,
+  head,
+  body,
   "hidden-login-form": hiddenLoginForm,
-  preloaded: preloaded,
+  preloaded,
   "body-footer": bodyFooter,
   "locale-script": localeScript,
-  "bare-stylesheets": bareStylesheets,
 };
 
-function replaceIn(bootstrap, template, id) {
+function replaceIn(bootstrap, template, id, headers) {
   let buffer = [];
-  BUILDERS[id](buffer, bootstrap);
+  BUILDERS[id](buffer, bootstrap, headers);
   let contents = buffer.filter((b) => b && b.length > 0).join("\n");
 
-  return template.replace(`{{bootstrap-content-for "${id}"}}`, contents);
+  return template.replace(`<bootstrap-content key="${id}">`, contents);
 }
 
-function applyBootstrap(bootstrap, template) {
+async function applyBootstrap(bootstrap, template, response) {
+  // If our initial page added some preload data let's not lose that.
+  let json = await response.json();
+  if (json && json.preloaded) {
+    bootstrap.preloaded = Object.assign(json.preloaded, bootstrap.preloaded);
+  }
+
   Object.keys(BUILDERS).forEach((id) => {
-    template = replaceIn(bootstrap, template, id);
+    template = replaceIn(bootstrap, template, id, response);
   });
   return template;
 }
 
-function decorateIndex(assetPath, baseUrl, headers) {
+function buildFromBootstrap(assetPath, proxy, baseURL, req, response) {
   // eslint-disable-next-line
   return new Promise((resolve, reject) => {
     fs.readFile(
       path.join(process.cwd(), "dist", assetPath),
       "utf8",
       (err, template) => {
-        getJSON(`${baseUrl}/bootstrap.json`, null, headers)
+        let url = `${proxy}${baseURL}bootstrap.json`;
+        let queryLoc = req.url.indexOf("?");
+        if (queryLoc !== -1) {
+          url += req.url.substr(queryLoc);
+        }
+
+        getJSON(url, null, req.headers)
           .then((json) => {
-            resolve(applyBootstrap(json.bootstrap, template));
+            return applyBootstrap(json.bootstrap, template, response);
           })
-          .catch(() => {
-            reject(`Could not get ${baseUrl}/bootstrap.json`);
+          .then(resolve)
+          .catch((e) => {
+            reject(
+              `Could not get ${proxy}${baseURL}bootstrap.json\n\n${e.toString()}`
+            );
           });
       }
     );
   });
+}
+
+async function handleRequest(assetPath, proxy, baseURL, req, res) {
+  if (assetPath.endsWith("tests/index.html")) {
+    return;
+  }
+
+  if (assetPath.endsWith("index.html")) {
+    try {
+      // Avoid Ember CLI's proxy if doing a GET, since Discourse depends on some non-XHR
+      // GET requests to work.
+      if (req.method === "GET") {
+        let url = `${proxy}${req.path}`;
+
+        let queryLoc = req.url.indexOf("?");
+        if (queryLoc !== -1) {
+          url += req.url.substr(queryLoc);
+        }
+
+        req.headers["X-Discourse-Ember-CLI"] = "true";
+        let get = bent("GET", [200, 301, 302, 303, 307, 308, 404, 403, 500]);
+        let response = await get(url, null, req.headers);
+        res.set(response.headers);
+        res.set("content-type", "text/html");
+        if (response.headers["x-discourse-bootstrap-required"] === "true") {
+          req.headers["X-Discourse-Asset-Path"] = req.path;
+          let html = await buildFromBootstrap(
+            assetPath,
+            proxy,
+            baseURL,
+            req,
+            response
+          );
+          return res.send(html);
+        }
+        res.status(response.status);
+        res.send(await response.text());
+      }
+    } catch (e) {
+      res.send(`
+                <html>
+                  <h1>Discourse Build Error</h1>
+                  <pre><code>${e.toString()}</code></pre>
+                </html>
+              `);
+    }
+  }
 }
 
 module.exports = {
@@ -191,6 +255,16 @@ module.exports = {
     let proxy = config.options.proxy;
     let app = config.app;
     let options = config.options;
+
+    if (!proxy) {
+      // eslint-disable-next-line
+      console.error(`
+Discourse can't be run without a \`--proxy\` setting, because it needs a Rails application
+to serve API requests. For example:
+
+  yarn run ember serve --proxy "http://localhost:3000"\n`);
+      throw "--proxy argument is required";
+    }
 
     let watcher = options.watcher;
 
@@ -210,36 +284,22 @@ module.exports = {
             isFile = fs
               .statSync(path.join(results.directory, assetPath))
               .isFile();
-          } catch (err) {
-            /* ignore */
-          }
+          } catch (err) {}
 
           if (!isFile) {
             assetPath = "index.html";
           }
-
-          if (assetPath.endsWith("index.html")) {
-            let template;
-            try {
-              template = await decorateIndex(assetPath, proxy, req.headers);
-            } catch (e) {
-              template = `
-                <html>
-                  <h1>Discourse Build Error</h1>
-                  <p>${e.toString()}</p>
-                </html>
-              `;
-            }
-            return res.send(template);
-          }
+          await handleRequest(assetPath, proxy, baseURL, req, res);
         }
       } finally {
-        next();
+        if (!res.headersSent) {
+          return next();
+        }
       }
     });
   },
 
-  shouldHandleRequest(req, options) {
+  shouldHandleRequest(req) {
     let acceptHeaders = req.headers.accept || [];
     let hasHTMLHeader = acceptHeaders.indexOf("text/html") !== -1;
     if (req.method !== "GET") {
@@ -253,11 +313,11 @@ module.exports = {
       return false;
     }
 
-    let baseURL =
-      options.rootURL === ""
-        ? "/"
-        : cleanBaseURL(options.rootURL || options.baseURL);
-    let baseURLRegexp = new RegExp(`^${baseURL}`);
+    if (req.path.endsWith(".json")) {
+      return false;
+    }
+
+    let baseURLRegexp = new RegExp(`^/`);
     return baseURLRegexp.test(req.path);
   },
 };

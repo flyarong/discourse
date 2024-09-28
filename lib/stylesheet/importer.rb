@@ -101,7 +101,7 @@ module Stylesheet
       end
 
       theme_id = @theme_id || SiteSetting.default_theme_id
-      resolved_ids = Theme.transform_ids([theme_id])
+      resolved_ids = Theme.transform_ids(theme_id)
 
       if resolved_ids
         theme = Theme.find_by_id(theme_id)
@@ -135,8 +135,14 @@ module Stylesheet
         rescue
           ColorScheme.base_colors
         end
+      elsif (@theme_id && !theme.component)
+        colors = theme&.color_scheme&.resolved_colors || ColorScheme.base_colors
       else
-        colors = (@theme_id && theme.color_scheme) ? theme.color_scheme.resolved_colors : ColorScheme.base_colors
+        # this is a slightly ugly backwards compatibility fix,
+        # we shouldn't be using the default theme color scheme for components
+        # (most components use CSS custom properties which work fine without this)
+        colors = Theme.find_by_id(SiteSetting.default_theme_id)&.color_scheme&.resolved_colors ||
+          ColorScheme.base_colors
       end
 
       colors.each do |n, hex|
@@ -146,8 +152,13 @@ module Stylesheet
       contents
     end
 
+    def public_image_path
+      image_path = UrlHelper.absolute("#{Discourse.base_path}/images")
+      "$public_image_path: \"#{image_path}\"; "
+    end
+
     def prepended_scss
-      "#{color_variables} @import \"common/foundation/variables\"; @import \"common/foundation/mixins\"; "
+      "#{color_variables} #{public_image_path} @import \"common/foundation/variables\"; @import \"common/foundation/mixins\"; "
     end
 
     def initialize(options)
@@ -162,6 +173,8 @@ module Stylesheet
     end
 
     def theme_import(target)
+      return "" if !@theme_id
+
       attr = target == :embedded_theme ? :embedded_scss : :scss
       target = target.to_s.gsub("_theme", "").to_sym
 
@@ -200,8 +213,9 @@ module Stylesheet
       contents = +""
 
       if font[:variants].present?
+        fonts_dir = UrlHelper.absolute("#{Discourse.base_path}/fonts")
         font[:variants].each do |variant|
-          src = variant[:src] ? variant[:src] : "asset-url(\"/fonts/#{variant[:filename]}?v=#{DiscourseFonts::VERSION}\") format(\"#{variant[:format]}\")"
+          src = variant[:src] ? variant[:src] : "url(\"#{fonts_dir}/#{variant[:filename]}?v=#{DiscourseFonts::VERSION}\") format(\"#{variant[:format]}\")"
           contents << <<~EOF
             @font-face {
               font-family: #{font[:name]};

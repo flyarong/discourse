@@ -33,14 +33,18 @@ class Users::OmniauthCallbacksController < ApplicationController
       Discourse.redis.setex "#{Users::AssociateAccountsController::REDIS_PREFIX}_#{current_user.id}_#{token}", 10.minutes, auth.to_json
       return redirect_to "#{Discourse.base_path}/associate/#{token}"
     else
-      DiscourseEvent.trigger(:before_auth, authenticator, auth)
+      DiscourseEvent.trigger(:before_auth, authenticator, auth, session, cookies)
       @auth_result = authenticator.after_authenticate(auth)
-      DiscourseEvent.trigger(:after_auth, authenticator, @auth_result)
+      @auth_result.user = nil if @auth_result&.user&.staged # Treat staged users the same as unregistered users
+      DiscourseEvent.trigger(:after_auth, authenticator, @auth_result, session, cookies)
     end
 
     preferred_origin = request.env['omniauth.origin']
 
-    if SiteSetting.enable_discourse_connect_provider && payload = cookies.delete(:sso_payload)
+    if session[:destination_url].present?
+      preferred_origin = session[:destination_url]
+      session.delete(:destination_url)
+    elsif SiteSetting.enable_discourse_connect_provider && payload = cookies.delete(:sso_payload)
       preferred_origin = session_sso_provider_url + "?" + payload
     elsif cookies[:destination_url].present?
       preferred_origin = cookies[:destination_url]
@@ -134,10 +138,8 @@ class Users::OmniauthCallbacksController < ApplicationController
       return
     end
 
-    # automatically activate/unstage any account if a provider marked the email valid
+    # automatically activate any account if a provider marked the email valid
     if @auth_result.email_valid && @auth_result.email == user.email
-      user.unstage!
-
       if !user.active || !user.email_confirmed?
         user.update!(password: SecureRandom.hex)
 

@@ -84,6 +84,10 @@ module UserGuardian
     can_merge_user?(source_user) && !target_user.nil?
   end
 
+  def can_see_warnings?(user)
+    user && (is_me?(user) || is_staff?)
+  end
+
   def can_reset_bounce_score?(user)
     user && is_staff?
   end
@@ -174,5 +178,9 @@ module UserGuardian
 
   def can_delete_sso_record?(user)
     SiteSetting.enable_discourse_connect && user && is_admin?
+  end
+
+  def can_change_tracking_preferences?(user)
+    (SiteSetting.allow_changing_staged_user_tracking || !user.staged) && can_edit_user?(user)
   end
 end

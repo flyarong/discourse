@@ -88,6 +88,7 @@ describe PostAction do
       topic.reload
       expect(topic.posts.count).to eq(2)
       expect(topic.posts.last.post_type).to eq(Post.types[:moderator_action])
+      expect(topic.message_archived?(mod)).to eq(true)
     end
 
   end
@@ -252,7 +253,7 @@ describe PostAction do
       admin4 = Fabricate(:admin)
       PostActionCreator.like(admin4, post)
 
-      # first happend within the same day, no need to notify
+      # first happened within the same day, no need to notify
       expect(Notification.where(post_number: 1, topic_id: post.topic_id).count)
         .to eq(2)
     end
@@ -418,7 +419,7 @@ describe PostAction do
       end.to_not change { Notification.count }
     end
 
-    it "should generate a notification if liker is an admin irregardles of \
+    it "should generate a notification if liker is an admin irregardless of \
       muting" do
 
       MutedUser.create!(user_id: post.user.id, muted_user_id: admin.id)
@@ -662,7 +663,7 @@ describe PostAction do
       expect(result.reviewable.payload['targets_topic']).to eq(false)
     end
 
-    it "will unhide the post when a moderator undos the flag on which s/he took action" do
+    it "will unhide the post when a moderator undoes the flag on which s/he took action" do
       Discourse.stubs(:site_contact_user).returns(admin)
 
       post = create_post

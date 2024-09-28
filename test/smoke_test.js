@@ -16,7 +16,7 @@ const path = require("path");
 
 (async () => {
   const browser = await puppeteer.launch({
-    // when debugging localy setting the SHOW_BROWSER env variable can be very helpful
+    // when debugging locally setting the SHOW_BROWSER env variable can be very helpful
     headless: process.env.SHOW_BROWSER === undefined,
     args: ["--disable-local-storage", "--no-sandbox"]
   });
@@ -220,24 +220,6 @@ const path = require("path");
 
     await exec("updates preview", () => {
       return page.waitForSelector(".d-editor-preview p", { visible: true });
-    });
-
-    await exec("open upload modal", () => {
-      return page.click(".d-editor-button-bar .upload");
-    });
-
-    await exec("upload modal is open", () => {
-      return page.waitForSelector("#filename-input", { visible: true });
-    });
-
-    await exec("upload modal closes", () => {
-      let promise = page.click(".d-modal-cancel");
-
-      promise = promise.then(() => {
-        return page.waitForSelector("#filename-input", { hidden: true });
-      });
-
-      return promise;
     });
 
     await exec("submit the topic", () => {

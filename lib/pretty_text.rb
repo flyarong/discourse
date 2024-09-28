@@ -91,6 +91,7 @@ module PrettyText
     apply_es6_file(ctx, root_path, "discourse-common/addon/lib/get-url")
     apply_es6_file(ctx, root_path, "discourse-common/addon/lib/object")
     apply_es6_file(ctx, root_path, "discourse-common/addon/lib/deprecated")
+    apply_es6_file(ctx, root_path, "discourse-common/addon/lib/escape")
     apply_es6_file(ctx, root_path, "discourse/app/lib/to-markdown")
     apply_es6_file(ctx, root_path, "discourse/app/lib/utilities")
 
@@ -172,7 +173,8 @@ module PrettyText
         __optInput.emojiUnicodeReplacer = __emojiUnicodeReplacer;
         __optInput.lookupUploadUrls = __lookupUploadUrls;
         __optInput.censoredRegexp = #{WordWatcher.word_matcher_regexp(:censor)&.source.to_json};
-        __optInput.watchedWordsReplacements = #{WordWatcher.get_cached_words(:replace).to_json};
+        __optInput.watchedWordsReplace = #{WordWatcher.word_matcher_regexps(:replace).to_json};
+        __optInput.watchedWordsLink = #{WordWatcher.word_matcher_regexps(:link).to_json};
       JS
 
       if opts[:topicId]
@@ -322,8 +324,11 @@ module PrettyText
     links = []
     doc = Nokogiri::HTML5.fragment(html)
 
-    # remove href inside quotes & elided part
-    doc.css("aside.quote a, .elided a").each { |a| a["href"] = "" }
+    # extract onebox links
+    doc.css("aside.onebox[data-onebox-src]").each { |onebox| links << DetectedLink.new(onebox["data-onebox-src"], false) }
+
+    # remove href inside quotes & oneboxes & elided part
+    doc.css("aside.quote a, aside.onebox a, .elided a").remove
 
     # extract all links
     doc.css("a").each do |a|

@@ -8,6 +8,19 @@ module Jobs
 
     sidekiq_options queue: 'low'
 
+    sidekiq_retry_in do |count, exception|
+      # retry in an hour when SMTP server is busy
+      # or use default sidekiq retry formula. returning
+      # nil/0 will trigger the default sidekiq
+      # retry formula
+      #
+      # See https://github.com/mperham/sidekiq/blob/3330df0ee37cfd3e0cd3ef01e3e66b584b99d488/lib/sidekiq/job_retry.rb#L216-L234
+      case exception.wrapped
+      when Net::SMTPServerBusy
+        return 1.hour + (rand(30) * (count + 1))
+      end
+    end
+
     # Can be overridden by subclass, for example critical email
     # should always consider being sent
     def quit_email_early?
@@ -141,7 +154,8 @@ module Jobs
           email_args[:notification_type] = email_args[:notification_type].to_s
         end
 
-        if user.user_option.mailing_list_mode? &&
+        if !SiteSetting.disable_mailing_list_mode &&
+           user.user_option.mailing_list_mode? &&
            user.user_option.mailing_list_mode_frequency > 0 && # don't catch notifications for users on daily mailing list mode
            (!post.try(:topic).try(:private_message?)) &&
            NOTIFICATIONS_SENT_BY_MAILING_LIST.include?(email_args[:notification_type])
@@ -203,22 +217,6 @@ module Jobs
       message.to = to_address if message && to_address.present?
 
       [message, nil]
-    end
-
-    sidekiq_retry_in do |count, exception|
-      # retry in an hour when SMTP server is busy
-      # or use default sidekiq retry formula
-      case exception.wrapped
-      when Net::SMTPServerBusy
-        1.hour + (rand(30) * (count + 1))
-      else
-        ::Jobs::UserEmail.seconds_to_delay(count)
-      end
-    end
-
-    # extracted from sidekiq
-    def self.seconds_to_delay(count)
-      (count**4) + 15 + (rand(30) * (count + 1))
     end
 
     private

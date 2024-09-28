@@ -324,6 +324,15 @@ describe Topic do
       it "won't allow another topic to be created with the same name in same category" do
         expect(new_topic).not_to be_valid
       end
+
+      it "other errors will not be cleared" do
+        SiteSetting.min_topic_title_length = 5
+        topic.update!(title: "more than 5 characters but less than 134")
+        SiteSetting.min_topic_title_length = 134
+        new_topic_different_cat.title = "more than 5 characters but less than 134"
+        expect(new_topic_different_cat).not_to be_valid
+        expect(new_topic_different_cat.errors[:title]).to include(I18n.t("errors.messages.too_short", count: 134))
+      end
     end
 
   end
@@ -620,7 +629,6 @@ describe Topic do
 
       after do
         RateLimiter.clear_all!
-        RateLimiter.disable
       end
 
       it "rate limits topic invitations" do
@@ -894,12 +902,14 @@ describe Topic do
           before { user.update!(trust_level: TrustLevel[2]) }
 
           it 'should create an invite' do
+            Jobs.run_immediately!
             expect(topic.invite(user, 'test@email.com')).to eq(true)
 
             invite = Invite.last
 
             expect(invite.email).to eq('test@email.com')
             expect(invite.invited_by).to eq(user)
+            expect(ActionMailer::Base.deliveries.last.body).to include(topic.title)
           end
         end
       end
@@ -980,6 +990,7 @@ describe Topic do
             set_state!(group, user_muted, :muted)
 
             Notification.delete_all
+            Jobs.run_immediately!
             topic.invite_group(topic.user, group)
 
             expect(Notification.count).to eq(3)
@@ -1369,6 +1380,24 @@ describe Topic do
 
     end
 
+    context "bannered_until date" do
+
+      it 'sets bannered_until to be caught by ensure_consistency' do
+        bannered_until = 5.days.from_now
+        topic.make_banner!(user, bannered_until.to_s)
+
+        freeze_time 6.days.from_now do
+          expect(topic.archetype).to eq(Archetype.banner)
+
+          Topic.ensure_consistency!
+          topic.reload
+
+          expect(topic.archetype).to eq(Archetype.default)
+        end
+      end
+
+    end
+
   end
 
   context 'last_poster info' do
@@ -1586,7 +1615,12 @@ describe Topic do
           end
 
           it 'should generate the modified notification for the topic if already seen' do
-            TopicUser.create!(topic_id: topic.id, highest_seen_post_number: topic.posts.first.post_number, user_id: user.id)
+            TopicUser.create!(
+              topic_id: topic.id,
+              last_read_post_number: topic.posts.first.post_number,
+              user_id: user.id
+            )
+
             expect do
               topic.change_category_to_id(new_category.id)
             end.to change { Notification.count }.by(2)
@@ -1950,6 +1984,17 @@ describe Topic do
         expect(Topic.for_digest(user, 1.year.ago)).to eq([])
       end
 
+      it "does return watched topics from muted categories" do
+        user = Fabricate(:user)
+        category = Fabricate(:category_with_definition, created_at: 2.minutes.ago)
+        topic = Fabricate(:topic, category: category, created_at: 1.minute.ago)
+
+        CategoryUser.set_notification_level_for_category(user, CategoryUser.notification_levels[:muted], category.id)
+        Fabricate(:topic_user, user: user, topic: topic, notification_level: TopicUser.notification_levels[:regular])
+
+        expect(Topic.for_digest(user, 1.year.ago, top_order: true)).to eq([topic])
+      end
+
       it "doesn't return topics from suppressed categories" do
         user = Fabricate(:user)
         category = Fabricate(:category_with_definition, created_at: 2.minutes.ago)
@@ -2096,7 +2141,7 @@ describe Topic do
       expect(topic.all_allowed_users).to include moderator
     end
 
-    it 'includes moderators if offical warning' do
+    it 'includes moderators if official warning' do
       topic.stubs(:subtype).returns(TopicSubtype.moderator_warning)
       topic.stubs(:private_message?).returns(true)
       expect(topic.all_allowed_users).to include moderator
@@ -2273,7 +2318,6 @@ describe Topic do
 
     after do
       RateLimiter.clear_all!
-      RateLimiter.disable
     end
 
     it "limits according to max_personal_messages_per_day" do
@@ -2286,10 +2330,10 @@ describe Topic do
     end
   end
 
-  describe ".count_exceeds_minimun?" do
+  describe ".count_exceeds_minimum?" do
     before { SiteSetting.minimum_topics_similar = 20 }
 
-    context "when Topic count is geater than minimum_topics_similar" do
+    context "when Topic count is greater than minimum_topics_similar" do
       it "should be true" do
         Topic.stubs(:count).returns(30)
         expect(Topic.count_exceeds_minimum?).to be_truthy
@@ -2313,7 +2357,7 @@ describe Topic do
       expect(topic.expandable_first_post?).to eq(false)
     end
 
-    describe 'with an emeddable host' do
+    describe 'with an embeddable host' do
       before do
         Fabricate(:embeddable_host)
         SiteSetting.embed_truncate = true

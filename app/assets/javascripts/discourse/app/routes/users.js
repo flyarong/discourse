@@ -1,12 +1,15 @@
 import DiscourseRoute from "discourse/routes/discourse";
 import I18n from "I18n";
+import { ajax } from "discourse/lib/ajax";
+import { popupAjaxError } from "discourse/lib/ajax-error";
+import { Promise } from "rsvp";
 
 export default DiscourseRoute.extend({
   queryParams: {
     period: { refreshModel: true },
     order: { refreshModel: true },
     asc: { refreshModel: true },
-    name: { refreshModel: true, replace: true },
+    name: { refreshModel: false, replace: true },
     group: { refreshModel: true },
     exclude_usernames: { refreshModel: true },
   },
@@ -36,11 +39,20 @@ export default DiscourseRoute.extend({
   },
 
   model(params) {
-    return params;
+    return ajax("/directory-columns.json")
+      .then((response) => {
+        params.order = params.order || response.directory_columns[0].name;
+        return { params, columns: response.directory_columns };
+      })
+      .catch(popupAjaxError);
   },
 
-  setupController(controller, params) {
-    controller.loadUsers(params);
+  setupController(controller, model) {
+    controller.set("columns", model.columns);
+    return Promise.all([
+      controller.loadGroups(),
+      controller.loadUsers(model.params),
+    ]);
   },
 
   actions: {

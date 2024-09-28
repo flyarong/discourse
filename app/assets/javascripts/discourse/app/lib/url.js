@@ -1,5 +1,6 @@
 import getURL, { withoutPrefix } from "discourse-common/lib/get-url";
 import { next, schedule } from "@ember/runloop";
+import Category from "discourse/models/category";
 import EmberObject from "@ember/object";
 import LockOn from "discourse/lib/lock-on";
 import Session from "discourse/models/session";
@@ -8,9 +9,10 @@ import { defaultHomepage } from "discourse/lib/utilities";
 import { isEmpty } from "@ember/utils";
 import offsetCalculator from "discourse/lib/offset-calculator";
 import { setOwner } from "@ember/application";
+import { isTesting } from "discourse-common/config/environment";
 
 const rewrites = [];
-const TOPIC_REGEXP = /\/t\/([^\/]+)\/(\d+)\/?(\d+)?/;
+export const TOPIC_URL_REGEXP = /\/t\/([^\/]+)\/(\d+)\/?(\d+)?/;
 
 // We can add links here that have server side responses but not client side.
 const SERVER_SIDE_ONLY = [
@@ -27,13 +29,13 @@ const SERVER_SIDE_ONLY = [
   /\.json$/,
   /^\/admin\/upgrade$/,
   /^\/logs($|\/)/,
-  /^\/admin\/logs\/watched_words\/action\/[^\/]+\/download$/,
+  /^\/admin\/customize\/watched_words\/action\/[^\/]+\/download$/,
   /^\/pub\//,
   /^\/invites\//,
   /^\/styleguide/,
 ];
 
-// The amount of height (in pixles) that we factor in when jumpEnd is called so
+// The amount of height (in pixels) that we factor in when jumpEnd is called so
 // that we show a little bit of the post text even on mobile devices instead of
 // scrolling to "suggested topics".
 const JUMP_END_BUFFER = 250;
@@ -225,7 +227,7 @@ const DiscourseURL = EmberObject.extend({
     }
 
     if (Session.currentProp("requiresRefresh")) {
-      return this.redirectTo(getURL(path));
+      return this.redirectTo(path);
     }
 
     const pathname = path.replace(/(https?\:)?\/\/[^\/]+/, "");
@@ -307,17 +309,20 @@ const DiscourseURL = EmberObject.extend({
     rewrites.push({ regexp, replacement, opts: opts || {} });
   },
 
-  redirectTo(url) {
-    window.location = getURL(url);
+  redirectAbsolute(url) {
+    // Redirects will kill a test runner
+    if (isTesting()) {
+      return true;
+    }
+    window.location = url;
     return true;
   },
 
-  /**
-   * Determines whether a URL is internal or not
-   *
-   * @method isInternal
-   * @param {String} url
-   **/
+  redirectTo(url) {
+    return this.redirectAbsolute(getURL(url));
+  },
+
+  // Determines whether a URL is internal or not
   isInternal(url) {
     if (url && url.length) {
       if (url.indexOf("//") === 0) {
@@ -348,11 +353,11 @@ const DiscourseURL = EmberObject.extend({
     same topic, use replaceState and instruct our controller to load more posts.
   **/
   navigatedToPost(oldPath, path, routeOpts) {
-    const newMatches = TOPIC_REGEXP.exec(path);
+    const newMatches = TOPIC_URL_REGEXP.exec(path);
     const newTopicId = newMatches ? newMatches[2] : null;
 
     if (newTopicId) {
-      const oldMatches = TOPIC_REGEXP.exec(oldPath);
+      const oldMatches = TOPIC_URL_REGEXP.exec(oldPath);
       const oldTopicId = oldMatches ? oldMatches[2] : null;
 
       // If the topic_id is the same
@@ -370,7 +375,9 @@ const DiscourseURL = EmberObject.extend({
           opts.nearPost = topicController.get("model.highest_post_number");
         }
 
-        opts.cancelSummary = true;
+        if (!routeOpts.keepFilter) {
+          opts.cancelFilter = true;
+        }
 
         postStream.refresh(opts).then(() => {
           const closest = postStream.closestPostNumberFor(opts.nearPost || 1);
@@ -476,6 +483,7 @@ const DiscourseURL = EmberObject.extend({
 
     transition._discourse_intercepted = true;
     transition._discourse_anchor = elementId;
+    transition._discourse_original_url = path;
 
     const promise = transition.promise || transition;
     promise.then(() => jumpToElement(elementId));
@@ -511,6 +519,15 @@ export function getCategoryAndTagUrl(category, subcategories, tag) {
   }
 
   return getURL(url || "/");
+}
+
+export function getEditCategoryUrl(category, subcategories, tab) {
+  let url = `/c/${Category.slugFor(category)}/edit`;
+
+  if (tab) {
+    url += `/${tab}`;
+  }
+  return getURL(url);
 }
 
 export default _urlInstance;

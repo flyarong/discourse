@@ -1,4 +1,6 @@
 import {
+  authorizedExtensions,
+  authorizesAllExtensions,
   authorizesOneOrMoreImageExtensions,
   displayErrorForUpload,
   getUploadMarkdown,
@@ -45,17 +47,34 @@ import userSearch from "discourse/lib/user-search";
 
 const REBUILD_SCROLL_MAP_EVENTS = ["composer:resized", "composer:typed-reply"];
 
-const uploadHandlers = [];
+let uploadHandlers = [];
 export function addComposerUploadHandler(extensions, method) {
   uploadHandlers.push({
     extensions,
     method,
   });
 }
+export function cleanUpComposerUploadHandler() {
+  uploadHandlers = [];
+}
 
-const uploadMarkdownResolvers = [];
+let uploadProcessorQueue = [];
+let uploadProcessorActions = {};
+export function addComposerUploadProcessor(queueItem, actionItem) {
+  uploadProcessorQueue.push(queueItem);
+  Object.assign(uploadProcessorActions, actionItem);
+}
+export function cleanUpComposerUploadProcessor() {
+  uploadProcessorQueue = [];
+  uploadProcessorActions = {};
+}
+
+let uploadMarkdownResolvers = [];
 export function addComposerUploadMarkdownResolver(resolver) {
   uploadMarkdownResolvers.push(resolver);
+}
+export function cleanUpComposerUploadMarkdownResolver() {
+  uploadMarkdownResolvers = [];
 }
 
 export default Component.extend({
@@ -73,7 +92,13 @@ export default Component.extend({
     const filename = uploadFilenamePlaceholder
       ? uploadFilenamePlaceholder
       : clipboard;
-    return `[${I18n.t("uploading_filename", { filename })}]() `;
+
+    let placeholder = `[${I18n.t("uploading_filename", { filename })}]()\n`;
+    if (!this._cursorIsOnEmptyLine()) {
+      placeholder = `\n${placeholder}`;
+    }
+
+    return placeholder;
   },
 
   @discourseComputed("composer.requiredCategoryMissing")
@@ -177,6 +202,21 @@ export default Component.extend({
     });
   },
 
+  @discourseComputed()
+  acceptsAllFormats() {
+    return authorizesAllExtensions(this.currentUser.staff, this.siteSettings);
+  },
+
+  @discourseComputed()
+  acceptedFormats() {
+    const extensions = authorizedExtensions(
+      this.currentUser.staff,
+      this.siteSettings
+    );
+
+    return extensions.map((ext) => `.${ext}`).join();
+  },
+
   @on("didInsertElement")
   _composerEditorInit() {
     const $input = $(this.element.querySelector(".d-editor-input"));
@@ -246,7 +286,11 @@ export default Component.extend({
       if (tl === 0 || tl === 1) {
         reason +=
           "<br/>" +
-          I18n.t("composer.error.try_like", { heart: iconHTML("heart") });
+          I18n.t("composer.error.try_like", {
+            heart: iconHTML("heart", {
+              label: I18n.t("likes_lowercase", { count: 1 }),
+            }),
+          });
       }
     }
 
@@ -265,7 +309,7 @@ export default Component.extend({
 
     // when adding two separate files with the same filename search for matching
     // placeholder already existing in the editor ie [Uploading: test.png...]
-    // and add order nr to the next one: [Uplodading: test.png(1)...]
+    // and add order nr to the next one: [Uploading: test.png(1)...]
     const escapedFilename = filename.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const regexString = `\\[${I18n.t("uploading_filename", {
       filename: escapedFilename + "(?:\\()?([0-9])?(?:\\))?",
@@ -540,6 +584,10 @@ export default Component.extend({
     schedule("afterRender", () => {
       let found = this.warnedGroupMentions || [];
       $preview.find(".mention-group.notify").each((idx, e) => {
+        if (this._isInQuote(e)) {
+          return;
+        }
+
         const $e = $(e);
         let name = $e.data("name");
         if (found.indexOf(name) === -1) {
@@ -624,11 +672,49 @@ export default Component.extend({
 
     const $element = $(this.element);
 
+    $.blueimp.fileupload.prototype.processActions = uploadProcessorActions;
+
     $element.fileupload({
       url: getURL(`/uploads.json?client_id=${this.messageBus.clientId}`),
       dataType: "json",
       pasteZone: $element,
+      processQueue: uploadProcessorQueue,
     });
+
+    $element
+      .on("fileuploadprocessstart", () => {
+        this.setProperties({
+          uploadProgress: 0,
+          isUploading: true,
+          isProcessingUpload: true,
+          isCancellable: false,
+        });
+      })
+      .on("fileuploadprocess", (e, data) => {
+        this.appEvents.trigger(
+          "composer:insert-text",
+          `[${I18n.t("processing_filename", {
+            filename: data.files[data.index].name,
+          })}]()\n`
+        );
+      })
+      .on("fileuploadprocessalways", (e, data) => {
+        this.appEvents.trigger(
+          "composer:replace-text",
+          `[${I18n.t("processing_filename", {
+            filename: data.files[data.index].name,
+          })}]()\n`,
+          ""
+        );
+      })
+      .on("fileuploadprocessstop", () => {
+        this.setProperties({
+          uploadProgress: 0,
+          isUploading: false,
+          isProcessingUpload: false,
+          isCancellable: false,
+        });
+      });
 
     $element.on("fileuploadpaste", (e) => {
       this._pasted = true;
@@ -765,10 +851,12 @@ export default Component.extend({
     });
 
     if (this.site.mobileView) {
-      $("#reply-control .mobile-file-upload").on("click.uploader", function () {
-        // redirect the click on the hidden file input
-        $("#mobile-uploader").click();
-      });
+      const uploadButton = document.getElementById("mobile-file-upload");
+      uploadButton.addEventListener(
+        "click",
+        () => document.getElementById("file-uploader").click(),
+        false
+      );
     }
   },
 
@@ -858,6 +946,42 @@ export default Component.extend({
 
   showPreview() {
     this.send("togglePreview");
+  },
+
+  _isInQuote(element) {
+    let parent = element.parentElement;
+    while (parent && !this._isPreviewRoot(parent)) {
+      if (this._isQuote(parent)) {
+        return true;
+      }
+
+      parent = parent.parentElement;
+    }
+
+    return false;
+  },
+
+  _isPreviewRoot(element) {
+    return (
+      element.tagName === "DIV" &&
+      element.classList.contains("d-editor-preview")
+    );
+  },
+
+  _isQuote(element) {
+    return element.tagName === "ASIDE" && element.classList.contains("quote");
+  },
+
+  _cursorIsOnEmptyLine() {
+    const textArea = this.element.querySelector(".d-editor-input");
+    const selectionStart = textArea.selectionStart;
+    if (selectionStart === 0) {
+      return true;
+    } else if (textArea.value.charAt(selectionStart - 1) === "\n") {
+      return true;
+    } else {
+      return false;
+    }
   },
 
   actions: {

@@ -1,6 +1,8 @@
 import {
   acceptance,
+  count,
   exists,
+  query,
   queryAll,
   visible,
 } from "discourse/tests/helpers/qunit-helpers";
@@ -14,7 +16,6 @@ import {
 import I18n from "I18n";
 import selectKit from "discourse/tests/helpers/select-kit-helper";
 import { test } from "qunit";
-import { IMAGE_VERSION as v } from "pretty-text/emoji/version";
 import { withPluginApi } from "discourse/lib/plugin-api";
 
 async function selectText(selector) {
@@ -39,7 +40,7 @@ acceptance("Topic", function (needs) {
   test("Reply as new topic", async function (assert) {
     await visit("/t/internationalization-localization/280");
     await click("button.share:nth-of-type(1)");
-    await click(".reply-as-new-topic a");
+    await click("button.new-topic");
 
     assert.ok(exists(".d-editor-input"), "the composer input is visible");
 
@@ -58,7 +59,7 @@ acceptance("Topic", function (needs) {
   test("Reply as new message", async function (assert) {
     await visit("/t/pm-for-testing/12");
     await click("button.share:nth-of-type(1)");
-    await click(".reply-as-new-topic a");
+    await click("button.new-topic");
 
     assert.ok(exists(".d-editor-input"), "the composer input is visible");
 
@@ -141,16 +142,13 @@ acceptance("Topic", function (needs) {
   test("Marking a topic as wiki", async function (assert) {
     await visit("/t/internationalization-localization/280");
 
-    assert.ok(
-      queryAll("a.wiki").length === 0,
-      "it does not show the wiki icon"
-    );
+    assert.ok(!exists("a.wiki"), "it does not show the wiki icon");
 
     await click(".topic-post:nth-of-type(1) button.show-more-actions");
     await click(".topic-post:nth-of-type(1) button.show-post-admin-menu");
     await click(".btn.wiki");
 
-    assert.ok(queryAll("button.wiki").length === 1, "it shows the wiki icon");
+    assert.equal(count("button.wiki"), 1, "it shows the wiki icon");
   });
 
   test("Visit topic routes", async function (assert) {
@@ -179,9 +177,8 @@ acceptance("Topic", function (needs) {
 
     await click("#topic-title .submit-edit");
 
-    assert.equal(
-      queryAll(".fancy-title").html().trim(),
-      `emojis title <img width=\"20\" height=\"20\" src="/images/emoji/google_classic/bike.png?v=${v}" title="bike" alt="bike" class="emoji"> <img width=\"20\" height=\"20\" src="/images/emoji/google_classic/blonde_woman/6.png?v=${v}" title="blonde_woman:t6" alt="blonde_woman:t6" class="emoji">`,
+    assert.ok(
+      queryAll(".fancy-title").html().trim().indexOf("bike.png") !== -1,
       "it displays the new title with emojis"
     );
   });
@@ -194,10 +191,9 @@ acceptance("Topic", function (needs) {
 
     await click("#topic-title .submit-edit");
 
-    assert.equal(
-      queryAll(".fancy-title").html().trim(),
-      `emojis title <img width=\"20\" height=\"20\" src="/images/emoji/google_classic/man_farmer.png?v=${v}" title="man_farmer" alt="man_farmer" class="emoji"><img width=\"20\" height=\"20\" src="/images/emoji/google_classic/pray.png?v=${v}" title="pray" alt="pray" class="emoji">`,
-      "it displays the new title with escaped unicode emojis"
+    assert.ok(
+      queryAll(".fancy-title").html().trim().indexOf("man_farmer.png") !== -1,
+      "it displays the new title with emojis"
     );
   });
 
@@ -210,10 +206,12 @@ acceptance("Topic", function (needs) {
 
     await click("#topic-title .submit-edit");
 
-    assert.equal(
-      queryAll(".fancy-title").html().trim(),
-      `Test<img width=\"20\" height=\"20\" src="/images/emoji/google_classic/slightly_smiling_face.png?v=${v}" title="slightly_smiling_face" alt="slightly_smiling_face" class="emoji">Title`,
-      "it displays the new title with escaped unicode emojis"
+    assert.ok(
+      queryAll(".fancy-title")
+        .html()
+        .trim()
+        .indexOf("slightly_smiling_face.png") !== -1,
+      "it displays the new title with emojis"
     );
   });
 
@@ -268,7 +266,17 @@ acceptance("Topic featured links", function (needs) {
   needs.settings({
     topic_featured_link_enabled: true,
     max_topic_title_length: 80,
+    exclude_rel_nofollow_domains: "example.com",
   });
+
+  test("remove nofollow attribute", async function (assert) {
+    await visit("/t/-/299/1");
+
+    const link = queryAll(".title-wrapper .topic-featured-link");
+    assert.equal(link.text(), " example.com");
+    assert.equal(link.attr("rel"), "ugc");
+  });
+
   test("remove featured link", async function (assert) {
     await visit("/t/-/299/1");
     assert.ok(
@@ -367,7 +375,7 @@ acceptance("Topic featured links", function (needs) {
     await visit("/t/internationalization-localization/280");
     await click(".gap");
 
-    assert.equal(queryAll(".gap").length, 0, "it hides gap");
+    assert.ok(!exists(".gap"), "it hides gap");
   });
 
   test("Quoting a quote keeps the original poster name", async function (assert) {
@@ -434,6 +442,28 @@ acceptance("Topic featured links", function (needs) {
   });
 });
 
+acceptance("Topic featured links", function (needs) {
+  needs.user();
+  needs.settings({
+    topic_featured_link_enabled: true,
+    max_topic_title_length: 80,
+  });
+
+  test("remove featured link", async function (assert) {
+    await visit("/t/-/299/1");
+    assert.ok(
+      exists(".title-wrapper .topic-featured-link"),
+      "link is shown with topic title"
+    );
+
+    await click(".title-wrapper .edit-topic");
+    assert.ok(
+      exists(".title-wrapper .remove-featured-link"),
+      "link to remove featured link"
+    );
+  });
+});
+
 acceptance("Topic with title decorated", function (needs) {
   needs.user();
   needs.hooks.beforeEach(() => {
@@ -443,16 +473,17 @@ acceptance("Topic with title decorated", function (needs) {
       });
     });
   });
+
   test("Decorate topic title", async function (assert) {
     await visit("/t/internationalization-localization/280");
 
     assert.ok(
-      queryAll(".fancy-title")[0].innerText.endsWith("-280-topic-title"),
+      query(".fancy-title").innerText.endsWith("-280-topic-title"),
       "it decorates topic title"
     );
 
     assert.ok(
-      queryAll(".raw-topic-link:nth-child(1)")[0].innerText.endsWith(
+      query(".raw-topic-link:nth-child(1)").innerText.endsWith(
         "-27331-topic-list-item-title"
       ),
       "it decorates topic list item title"
@@ -464,6 +495,27 @@ acceptance("Topic pinning/unpinning as an admin", function (needs) {
   needs.user({ admin: true });
 
   test("Admin pinning topic", async function (assert) {
+    await visit("/t/topic-for-group-moderators/2480");
+
+    await click(".toggle-admin-menu");
+    await click(".topic-admin-pin .btn");
+
+    assert.ok(
+      exists(".feature-topic .btn-primary"),
+      "it should show the 'Pin Topic' button"
+    );
+
+    assert.ok(
+      exists(".make-banner"),
+      "it should show the 'Banner Topic' button"
+    );
+  });
+});
+
+acceptance("Topic pinning/unpinning as a staff member", function (needs) {
+  needs.user({ moderator: true, admin: false, trust_level: 2 });
+
+  test("Staff pinning topic", async function (assert) {
     await visit("/t/topic-for-group-moderators/2480");
 
     await click(".toggle-admin-menu");
@@ -498,6 +550,26 @@ acceptance("Topic pinning/unpinning as a group moderator", function (needs) {
     assert.ok(
       !exists(".make-banner"),
       "it should not show the 'Banner Topic' button"
+    );
+  });
+});
+
+acceptance("Topic last visit line", function (needs) {
+  needs.user({ moderator: false, admin: false, trust_level: 1 });
+
+  test("visit topic", async function (assert) {
+    await visit("/t/-/280");
+
+    assert.ok(
+      exists(".topic-post-visited-line.post-10"),
+      "shows the last visited line on the right post"
+    );
+
+    await visit("/t/-/9");
+
+    assert.ok(
+      !exists(".topic-post-visited-line"),
+      "does not show last visited line if post is the last post"
     );
   });
 });

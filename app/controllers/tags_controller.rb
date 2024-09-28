@@ -7,16 +7,20 @@ class TagsController < ::ApplicationController
   before_action :ensure_tags_enabled
   before_action :ensure_visible, only: [:show, :info]
 
+  def self.show_methods
+    Discourse.anonymous_filters.map { |f| :"show_#{f}" }
+  end
+
   requires_login except: [
     :index,
     :show,
     :tag_feed,
     :search,
     :info,
-    Discourse.anonymous_filters.map { |f| :"show_#{f}" }
-  ].flatten
+    *show_methods
+  ]
 
-  skip_before_action :check_xhr, only: [:tag_feed, :show, :index]
+  skip_before_action :check_xhr, only: [:tag_feed, :show, :index, *show_methods]
 
   before_action :set_category, except: [:index, :update, :destroy,
     :tag_feed, :search, :notifications, :update_notifications, :personal_messages, :info]
@@ -85,7 +89,9 @@ class TagsController < ::ApplicationController
       @list = nil
 
       if filter == :top
-        @list = TopicQuery.new(current_user, list_opts).public_send("list_top_for", SiteSetting.top_page_default_timeframe.to_sym)
+        period = params[:period] || SiteSetting.top_page_default_timeframe.to_sym
+        @list = TopicQuery.new(current_user, list_opts).public_send("list_top_for", period)
+        @list.for_period = period
       else
         @list = TopicQuery.new(current_user, list_opts).public_send("list_#{filter}")
       end

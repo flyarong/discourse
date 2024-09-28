@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
-class CategoryList < DraftableList
+class CategoryList
+  include ActiveModel::Serialization
+
   cattr_accessor :preloaded_topic_custom_fields
   self.preloaded_topic_custom_fields = Set.new
 
@@ -33,7 +35,6 @@ class CategoryList < DraftableList
       end
     end
 
-    super(@guardian.user)
   end
 
   def preload_key
@@ -99,7 +100,7 @@ class CategoryList < DraftableList
 
     @categories = @categories.to_a
 
-    notification_levels = CategoryUser.notification_levels_for(@guardian)
+    notification_levels = CategoryUser.notification_levels_for(@guardian.user)
     default_notification_level = CategoryUser.default_notification_level
 
     allowed_topic_create = Set.new(Category.topic_create_allowed(@guardian).pluck(:id))
@@ -143,7 +144,7 @@ class CategoryList < DraftableList
 
   def prune_empty
     return if SiteSetting.allow_uncategorized_topics
-    @categories.delete_if { |c| c.uncategorized? && c.displayable_topics.blank? }
+    @categories.delete_if { |c| c.uncategorized? }
   end
 
   # Attach some data for serialization to each topic

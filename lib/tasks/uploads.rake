@@ -46,7 +46,7 @@ def gather_uploads
         `cp --link '#{source}' '#{destination}'`
       end
 
-      # ensure file has been succesfuly copied over
+      # ensure file has been successfully copied over
       raise unless file_exists?(destination)
 
       # remap links in db
@@ -1006,7 +1006,8 @@ def fix_missing_s3
     verification_status: Upload.verification_statuses[:invalid_etag]
   ).pluck(:id)
   ids.each do |id|
-    upload = Upload.find(id)
+    upload = Upload.find_by(id: id)
+    next if !upload
 
     tempfile = nil
 
@@ -1023,8 +1024,8 @@ def fix_missing_s3
       fix_error = nil
       Upload.transaction do
         begin
-          upload.update!(sha1: SecureRandom.hex)
-          fixed_upload = UploadCreator.new(tempfile, "temp.#{upload.extension}").create_for(Discourse.system_user.id)
+          upload.update_column(:sha1, SecureRandom.hex)
+          fixed_upload = UploadCreator.new(tempfile, "temp.#{upload.extension}", skip_validations: true).create_for(Discourse.system_user.id)
         rescue => fix_error
           # invalid extension is the most common issue
         end
@@ -1036,15 +1037,25 @@ def fix_missing_s3
       else
         # we do not fix sha, it may be wrong for arbitrary reasons, if we correct it
         # we may end up breaking posts
-        upload.update!(etag: fixed_upload.etag, url: fixed_upload.url, verification_status: Upload.verification_statuses[:unchecked])
+        save_error = nil
+        begin
+          upload.assign_attributes(etag: fixed_upload.etag, url: fixed_upload.url, verification_status: Upload.verification_statuses[:unchecked])
+          upload.save!(validate: false)
+        rescue => save_error
+          # url might be null
+        end
 
-        OptimizedImage.where(upload_id: upload.id).destroy_all
-        rebake_ids = PostUpload.where(upload_id: upload.id).pluck(:post_id)
+        if save_error
+          puts "Failed to save upload #{save_error}"
+        else
+          OptimizedImage.where(upload_id: upload.id).destroy_all
+          rebake_ids = PostUpload.where(upload_id: upload.id).pluck(:post_id)
 
-        if rebake_ids.present?
-          Post.where(id: rebake_ids).each do |post|
-            puts "rebake post #{post.id}"
-            post.rebake!
+          if rebake_ids.present?
+            Post.where(id: rebake_ids).each do |post|
+              puts "rebake post #{post.id}"
+              post.rebake!
+            end
           end
         end
       end

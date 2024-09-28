@@ -112,7 +112,7 @@ module Jobs
           if upload.persisted?
             user_export.update_columns(upload_id: upload.id)
           else
-            Rails.logger.warn("Failed to upload the file #{zip_filename}")
+            Rails.logger.warn("Failed to upload the file #{zip_filename}: #{upload.errors.full_messages}")
           end
         end
 
@@ -280,6 +280,7 @@ module Jobs
         .with_deleted
         .where(user_id: @current_user.id)
         .where(post_action_type_id: PostActionType.flag_types.values)
+        .order(:created_at)
         .each do |pa|
         yield [
           pa.id,
@@ -303,8 +304,9 @@ module Jobs
         .with_deleted
         .where(user_id: @current_user.id)
         .where(post_action_type_id: PostActionType.types[:like])
+        .order(:created_at)
         .each do |pa|
-        post = Post.with_deleted.find(pa.post_id)
+        post = Post.with_deleted.find_by(id: pa.post_id)
         yield [
           pa.id,
           pa.post_id,
@@ -332,6 +334,7 @@ module Jobs
         .with_deleted
         .where(user_id: @current_user.id)
         .where.not(post_action_type_id: PostActionType.flag_types.values + [PostActionType.types[:like], PostActionType.types[:bookmark]])
+        .order(:created_at)
         .each do |pa|
         yield [
           pa.id,
@@ -352,6 +355,7 @@ module Jobs
       # Most Reviewable fields staff-private, but post content needs to be exported.
       ReviewableQueuedPost
         .where(created_by: @current_user.id)
+        .order(:created_at)
         .each do |rev|
 
         yield [
@@ -485,7 +489,7 @@ module Jobs
       post = nil
 
       if @current_user
-        post = if upload
+        post = if upload.persisted?
           SystemMessage.create_from_system_user(
             @current_user,
             :csv_export_succeeded,

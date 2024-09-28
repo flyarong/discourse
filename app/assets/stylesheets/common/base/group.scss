@@ -13,6 +13,12 @@ span.mention-group {
   position: relative;
 }
 
+.group-delete-tooltip {
+  background-color: var(--tertiary-low);
+  padding: 0.1em 2.5em 0.1em 1em;
+  margin-bottom: 10px;
+}
+
 .group-outlet {
   position: relative;
 }
@@ -77,8 +83,10 @@ span.mention-group {
 
   .group-details-button {
     display: flex;
-    flex-shrink: 0;
-    gap: 10px;
+    flex-wrap: wrap;
+    button:not(:last-child) {
+      margin-right: 0.5em;
+    }
   }
 }
 
@@ -232,4 +240,32 @@ table.group-category-permissions {
       font-size: 1.25em;
     }
   }
+}
+
+.group-smtp-email-settings,
+.group-imap-email-settings {
+  .groups-form {
+    display: grid;
+    grid-template-columns: 1fr 3fr;
+    margin-bottom: 0;
+
+    &.groups-form-imap {
+      grid-template-columns: 1fr 1fr 2fr;
+    }
+  }
+
+  background-color: var(--primary-very-low);
+  padding: 1em;
+  margin: 1em 0;
+  border: 1px solid var(--primary-low);
+
+  .group-imap-mailboxes {
+    .combo-box {
+      width: 50%;
+    }
+  }
+}
+
+.group-manage-email-additional-settings-wrapper {
+  margin-top: 1em;
 }

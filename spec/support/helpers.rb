@@ -182,8 +182,13 @@ module Helpers
     repo_dir
   end
 
-  class StubbedJob
-    def initialize; end
-    def perform(args); end
+  def stub_const(target, const, value)
+    old = target.const_get(const)
+    target.send(:remove_const, const)
+    target.const_set(const, value)
+    yield
+  ensure
+    target.send(:remove_const, const)
+    target.const_set(const, old)
   end
 end
